@@ -2,11 +2,12 @@
 
 מערכת לבקשת מקומות בבית הכנסת, אישור ושיבוץ על־ידי מנהל, תצוגת מפה וניהול צילומי תשלום.
 
+גרסה זו מותאמת לפריסה ב־Vercel. להנחיות פריסה ראו
+[VERCEL-DEPLOY.md](VERCEL-DEPLOY.md).
+
 ## הפעלה מקומית
 
 נדרש Node.js 22 ומעלה.
 
 1. התקנת תלויות: `npm install`
 2. הפעלה: `npm run dev`
-
-להנחיות פריסה ל‑Netlify ראו [NETLIFY-DEPLOY.md](NETLIFY-DEPLOY.md).
