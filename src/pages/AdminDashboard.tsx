@@ -79,6 +79,8 @@ export function AdminDashboard() {
   const [developerPassword, setDeveloperPassword] = useState("");
   const [developerMessage, setDeveloperMessage] = useState("");
   const [backups, setBackups] = useState<BackupSummary[]>([]);
+  const [showLastYearTable, setShowLastYearTable] = useState(false);
+  const [lastYearTable, setLastYearTable] = useState<Array<{ id: string; name: string; seats: string }>>([]);
   const [developerToken, setDeveloperToken] = useState(() => localStorage.getItem("synagogue-developer-token") || "");
   const [developerDeviceId] = useState(() => {
     const existing = localStorage.getItem("synagogue-developer-device");
@@ -234,6 +236,42 @@ export function AdminDashboard() {
     const result = await response.json().catch(() => null);
     if (!response.ok) { setDeveloperMessage(result?.error || "שחזור הגיבוי נכשל."); return; }
     setDeveloperMessage("הגיבוי שוחזר בהצלחה.");
+    await loadData();
+  };
+  const openLastYearTable = () => {
+    if (!data) return;
+    setLastYearTable(SEATS.map(seat => {
+      const user = data.lastYearUsers.find(item => item.seats.includes(seat.id));
+      return {
+        id: seat.id,
+        name: user ? [user.firstName, user.lastName].filter(Boolean).join(" ") : "",
+        seats: seat.id,
+      };
+    }));
+    setDeveloperMessage("");
+    setShowLastYearTable(true);
+  };
+  const saveLastYearTable = async () => {
+    const groupedSeats = new Map<string, string[]>();
+    for (const row of lastYearTable) {
+      const name = row.name.trim().replace(/\s+/g, " ");
+      if (!name) continue;
+      groupedSeats.set(name, [...(groupedSeats.get(name) || []), row.id]);
+    }
+    const users = [...groupedSeats.entries()].map(([name, seats]) => ({ name, seats }));
+    setDeveloperMessage("שומר את רשימת תשפ״ו...");
+    const response = await fetch("/api/admin/developer/last-year-users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...developerHeaders() },
+      body: JSON.stringify({ users }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      setDeveloperMessage(result?.error || "שמירת הרשימה נכשלה.");
+      return;
+    }
+    setShowLastYearTable(false);
+    setDeveloperMessage(`נשמרו ${result.count} רשומות של תשפ״ו.`);
     await loadData();
   };
 
@@ -760,9 +798,6 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-indigo-50/80 border border-indigo-200/50 flex items-center justify-center text-base font-bold text-indigo-800 shadow-sm pointer-events-none z-20">
                   בימה
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-                  עזרת גברים
-                </div>
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
@@ -829,9 +864,6 @@ export function AdminDashboard() {
                   ארון קודש
                 </div>
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-indigo-50/80 border border-indigo-200/50 flex items-center justify-center text-base font-bold text-indigo-800 shadow-sm pointer-events-none z-20">בימה</div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-                  עזרת גברים
-                </div>
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
@@ -877,7 +909,6 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-50 border border-slate-200 pointer-events-none" />
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-slate-100 border border-slate-400 flex items-center justify-center text-base font-bold text-slate-800 pointer-events-none">ארון קודש</div>
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-slate-50 border border-slate-400 flex items-center justify-center text-base font-bold text-slate-800 pointer-events-none">בימה</div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת גברים</div>
                 <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
                 {SEATS.map(seat => {
                   const seatData = data.seats[seat.id];
@@ -971,7 +1002,6 @@ export function AdminDashboard() {
                 <div className="inline-grid gap-1.5 mx-auto p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm relative" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 38px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 26px)` }}>
                   <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0" />
                   <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">ארון קודש</div>
-                  <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת גברים</div>
                   <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
                   {SEATS.map(seat => {
                     const isSelected = reassignmentSeats.includes(seat.id);
@@ -1059,9 +1089,6 @@ export function AdminDashboard() {
                 </div>
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
-                </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-                  עזרת גברים
                 </div>
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
@@ -1214,9 +1241,6 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-                  עזרת גברים
-                </div>
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
@@ -1321,7 +1345,36 @@ export function AdminDashboard() {
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-5" dir="rtl">
               <div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold text-slate-800">הגדרות מפתח</h3><p className="text-sm text-slate-500 mt-1">הגישה פעילה רק בדפדפן ובמכשיר הזה.</p></div><button onClick={() => setShowDeveloperAccess(false)} className="text-slate-500 hover:text-slate-800">סגירה</button></div>
-              {!developerToken ? <form onSubmit={unlockDeveloper} className="space-y-4"><label className="block text-sm font-medium text-slate-700">סיסמת מפתח<input autoFocus type="password" value={developerPassword} onChange={event => setDeveloperPassword(event.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-left" dir="ltr" /></label><button type="submit" disabled={!developerPassword} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 rounded-lg disabled:opacity-50">כניסה להגדרות מפתח</button>{developerMessage && <p className="text-sm text-rose-700">{developerMessage}</p>}</form> : <div className="space-y-4"><div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">פעולות אלה מיועדות להכנת סביבת בדיקה בלבד. מחיקה אינה ניתנת לשחזור.</div><button onClick={() => runDeveloperAction("/api/admin/developer/create-demo", "ליצור כעת 22 בקשות הדגמה חדשות? הבקשות הקיימות יישארו במערכת.")} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg">צור נתוני דמה</button><button onClick={() => runDeveloperAction("/api/admin/developer/clear-requests", "למחוק את כל הבקשות, האישורים וצילומי התשלום הקיימים? פעולה זו אינה ניתנת לשחזור.")} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-3 rounded-lg">מחק את כל הבקשות והאישורים</button><div className="rounded-lg border border-slate-200 p-3 space-y-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-slate-800">גרסאות גיבוי</p><p className="text-xs text-slate-500">נשמרת גרסה יומית, עד 30 גרסאות. גישה למפתח בלבד.</p></div><button onClick={() => void loadBackups()} className="text-sm font-semibold text-indigo-700 hover:underline">טען גרסאות</button></div><button onClick={() => void createBackupNow()} className="w-full bg-slate-700 hover:bg-slate-800 text-white font-semibold py-2 rounded-lg">צור גיבוי כעת</button>{backups.length > 0 && <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 border-t border-slate-100">{backups.map(backup => <div key={backup.id} className="flex items-center justify-between gap-2 py-2 text-sm"><span>{new Date(backup.timestamp).toLocaleString("he-IL")} · {backup.requestsCount} בקשות</span><button onClick={() => void restoreBackup(backup)} className="shrink-0 text-rose-700 font-semibold hover:underline">שחזר</button></div>)}</div>}</div><button onClick={() => { localStorage.removeItem("synagogue-developer-token"); setDeveloperToken(""); setDeveloperMessage("מצב המפתח ננעל במכשיר זה."); setBackups([]); }} className="w-full text-slate-600 hover:text-slate-900 text-sm font-medium py-2">נעל מצב מפתח במכשיר זה</button>{developerMessage && <p className="text-sm text-indigo-700 text-center">{developerMessage}</p>}</div>}
+              {!developerToken ? <form onSubmit={unlockDeveloper} className="space-y-4"><label className="block text-sm font-medium text-slate-700">סיסמת מפתח<input autoFocus type="password" value={developerPassword} onChange={event => setDeveloperPassword(event.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-left" dir="ltr" /></label><button type="submit" disabled={!developerPassword} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 rounded-lg disabled:opacity-50">כניסה להגדרות מפתח</button>{developerMessage && <p className="text-sm text-rose-700">{developerMessage}</p>}</form> : <div className="space-y-4"><div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">פעולות אלה מיועדות להכנת סביבת בדיקה בלבד. מחיקה אינה ניתנת לשחזור.</div><button onClick={openLastYearTable} className="w-full bg-teal-700 hover:bg-teal-800 text-white font-semibold py-3 rounded-lg">עריכת רשימת תשפ״ו בטבלה</button><p className="-mt-2 text-xs text-slate-500 text-center">עדכון הטבלה משנה גם את מפת תשפ״ו ואת זיהוי הלקוחות מהשנה שעברה.</p><button onClick={() => runDeveloperAction("/api/admin/developer/create-demo", "ליצור כעת 22 בקשות הדגמה חדשות? הבקשות הקיימות יישארו במערכת.")} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg">צור נתוני דמה</button><button onClick={() => runDeveloperAction("/api/admin/developer/clear-requests", "למחוק את כל הבקשות, האישורים וצילומי התשלום הקיימים? פעולה זו אינה ניתנת לשחזור.")} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-3 rounded-lg">מחק את כל הבקשות והאישורים</button><div className="rounded-lg border border-slate-200 p-3 space-y-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-slate-800">גרסאות גיבוי</p><p className="text-xs text-slate-500">נשמרת גרסה יומית, עד 30 גרסאות. גישה למפתח בלבד.</p></div><button onClick={() => void loadBackups()} className="text-sm font-semibold text-indigo-700 hover:underline">טען גרסאות</button></div><button onClick={() => void createBackupNow()} className="w-full bg-slate-700 hover:bg-slate-800 text-white font-semibold py-2 rounded-lg">צור גיבוי כעת</button>{backups.length > 0 && <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 border-t border-slate-100">{backups.map(backup => <div key={backup.id} className="flex items-center justify-between gap-2 py-2 text-sm"><span>{new Date(backup.timestamp).toLocaleString("he-IL")} · {backup.requestsCount} בקשות</span><button onClick={() => void restoreBackup(backup)} className="shrink-0 text-rose-700 font-semibold hover:underline">שחזר</button></div>)}</div>}</div><button onClick={() => { localStorage.removeItem("synagogue-developer-token"); setDeveloperToken(""); setDeveloperMessage("מצב המפתח ננעל במכשיר זה."); setBackups([]); }} className="w-full text-slate-600 hover:text-slate-900 text-sm font-medium py-2">נעל מצב מפתח במכשיר זה</button>{developerMessage && <p className="text-sm text-indigo-700 text-center">{developerMessage}</p>}</div>}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showLastYearTable && developerToken && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] p-4 sm:p-6 flex flex-col gap-4" dir="rtl">
+              <div className="flex items-start justify-between gap-4 shrink-0">
+                <div><h3 className="text-xl font-bold text-slate-800">רשימת שיבוץ תשפ״ו</h3><p className="text-sm text-slate-500 mt-1">כל מושב מופיע בשורה משלו. השארת השם ריק מסמנת מושב פנוי ומעדכנת את המפה ואת זיהוי הלקוחות.</p></div>
+                <button onClick={() => setShowLastYearTable(false)} className="text-slate-500 hover:text-slate-800 font-medium">סגירה</button>
+              </div>
+              <div className="overflow-auto border border-slate-200 rounded-lg">
+                <table className="w-full min-w-[500px] text-sm text-right">
+                  <thead className="sticky top-0 bg-slate-50 text-slate-600 border-b border-slate-200"><tr><th className="p-3 font-medium w-36">מושב</th><th className="p-3 font-medium">שם</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {lastYearTable.map((row, index) => <tr key={row.id}>
+                      <td className="p-3 font-mono font-semibold text-slate-700" dir="ltr">{row.id}</td>
+                      <td className="p-2"><input value={row.name} onChange={event => setLastYearTable(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder="מושב ריק" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-col-reverse sm:flex-row gap-3 shrink-0">
+                <div className="flex-1" />
+                <button onClick={() => setShowLastYearTable(false)} className="sm:w-auto bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-5 py-2 rounded-lg">ביטול</button>
+                <button onClick={() => void saveLastYearTable()} className="sm:w-auto bg-teal-700 hover:bg-teal-800 text-white font-semibold px-5 py-2 rounded-lg">שמור שינויים</button>
+              </div>
             </motion.div>
           </div>
         )}

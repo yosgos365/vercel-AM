@@ -69,10 +69,6 @@ export function Home() {
                 בימה
               </div>
               
-              {/* Labels for sections */}
-              <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-                עזרת גברים
-              </div>
               <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                 עזרת נשים
               </div>

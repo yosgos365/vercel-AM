@@ -775,6 +775,31 @@ app.post("/api/admin/last-year/seat/:seatId", adminAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// Developer-only bulk editor for the historical seating list. This is the
+// same data source used by the map and by the public identity question.
+app.post("/api/admin/developer/last-year-users", developerAuth, async (req, res) => {
+  const users = req.body?.users;
+  if (!Array.isArray(users)) return res.status(400).json({ error: "רשימת השיבוצים אינה תקינה" });
+  const occupiedSeats = new Set<string>();
+  const nextUsers: DBState["lastYearUsers"] = [];
+  for (const item of users) {
+    const name = typeof item?.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
+    const seats = Array.isArray(item?.seats) ? item.seats.filter((seat: unknown): seat is string => typeof seat === "string" && SEAT_IDS.has(seat)) : [];
+    if (!name && !seats.length) continue;
+    if (!name || !seats.length || new Set(seats).size !== seats.length || seats.some(seat => occupiedSeats.has(seat))) {
+      return res.status(400).json({ error: "לכל שם יש להזין מושב אחד לפחות, וכל מושב יכול להופיע פעם אחת בלבד" });
+    }
+    seats.forEach(seat => occupiedSeats.add(seat));
+    const [firstName, ...lastNameParts] = name.split(" ");
+    nextUsers.push({ id: `last-year-${nextUsers.length}-${Date.now()}`, firstName: lastNameParts.length ? firstName : "", lastName: lastNameParts.length ? lastNameParts.join(" ") : firstName, seats });
+  }
+  const db = await readDB();
+  db.lastYearUsers = nextUsers;
+  await writeDB(db);
+  addSeatAudit("רשימת תשפ״ו נערכה", { actor: "מפתח", details: `${nextUsers.length} רשומות עודכנו` });
+  res.json({ success: true, count: nextUsers.length });
+});
+
 // Admin update specific seat (manual override)
 app.post("/api/admin/seat/:seatId", adminAuth, async (req, res) => {
   const db = await readDB();
