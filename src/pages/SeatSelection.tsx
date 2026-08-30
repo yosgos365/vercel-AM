@@ -15,6 +15,10 @@ interface BookingPolicy {
   effectiveDate: string;
 }
 
+const SEAT_PRICE = 150;
+const MAX_PAYMENT_IMAGE_BYTES = 1_000_000;
+const MAX_PAYMENT_IMAGE_DIMENSION = 2000;
+
 export function SeatSelection() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [formData, setFormData] = useState({
@@ -26,19 +30,22 @@ export function SeatSelection() {
   const [seatStatuses, setSeatStatuses] = useState<Record<string, SeatStatus>>({});
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [paymentImage, setPaymentImage] = useState<string>("");
+  const [imageNotice, setImageNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [lastYearData, setLastYearData] = useState<{ found: boolean; name?: string; seats?: string[] } | null>(null);
   const [bookingPolicy, setBookingPolicy] = useState<BookingPolicy | null>(null);
-  const [testDate, setTestDate] = useState("");
   const [showLastYearModal, setShowLastYearModal] = useState(false);
   const [lastYearModalPhase, setLastYearModalPhase] = useState<"identity" | "choice">("identity");
   const [lastYearChoice, setLastYearChoice] = useState<"same-seat" | "different-seats" | "not-confirmed">("not-confirmed");
-  const isTestMode = formData.phone.trim().toUpperCase() === "TRE";
+  const totalAmount = selectedSeats.length * SEAT_PRICE;
   const priorityAllowedSeatIds = bookingPolicy?.priorityWindow
     ? new Set(
       lastYearChoice !== "not-confirmed" && lastYearData?.found
-        ? lastYearData.seats || []
+        ? [
+            ...(lastYearData.seats || []),
+            ...SEATS.map((seat) => seat.id).filter((seatId) => !bookingPolicy.lastYearOccupiedSeats.includes(seatId)),
+          ]
         : SEATS.map((seat) => seat.id).filter((seatId) => !bookingPolicy.lastYearOccupiedSeats.includes(seatId)),
     )
     : null;
@@ -56,7 +63,7 @@ export function SeatSelection() {
       const res = await fetch("/api/check-last-year", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName: formData.firstName, lastName: formData.lastName, phone: formData.phone, testDate: isTestMode ? testDate : undefined }),
+        body: JSON.stringify({ firstName: formData.firstName, lastName: formData.lastName, phone: formData.phone }),
       });
       const data = await res.json();
       setLastYearData(data);
@@ -86,14 +93,52 @@ export function SeatSelection() {
     );
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readImage = (file: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("לא ניתן לקרוא את התמונה"));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
+  });
+
+  const compressPaymentImage = async (file: File) => {
+    if (file.size <= MAX_PAYMENT_IMAGE_BYTES) return readImage(file);
+    const source = await readImage(file);
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("קובץ התמונה אינו תקין"));
+      element.src = source;
+    });
+    const scale = Math.min(1, MAX_PAYMENT_IMAGE_DIMENSION / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("לא ניתן להכין את התמונה להעלאה");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    let quality = 0.92;
+    let output = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+    while (output && output.size > MAX_PAYMENT_IMAGE_BYTES && quality > 0.55) {
+      quality -= 0.08;
+      output = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+    }
+    if (!output) throw new Error("לא ניתן לדחוס את התמונה");
+    return readImage(output);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPaymentImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setImageNotice("מכין את צילום התשלום להעלאה...");
+    try {
+      const image = await compressPaymentImage(file);
+      setPaymentImage(image);
+      setImageNotice(file.size > MAX_PAYMENT_IMAGE_BYTES ? "התמונה נדחסה לשמירה על העלאה מהירה וקריאה." : "");
+    } catch (error) {
+      setPaymentImage("");
+      setImageNotice(error instanceof Error ? error.message : "לא ניתן להכין את התמונה להעלאה");
     }
   };
 
@@ -111,7 +156,6 @@ export function SeatSelection() {
           lastYearIdentityConfirmed: lastYearChoice !== "not-confirmed",
           lastYearChoice,
           lastYearSeats: lastYearChoice === "not-confirmed" ? [] : lastYearData?.seats || [],
-          testDate: isTestMode ? testDate : undefined,
         }),
       });
       if (!response.ok) {
@@ -154,12 +198,6 @@ export function SeatSelection() {
                 className="relative space-y-6"
               >
                 <h2 className="text-2xl font-semibold text-slate-800">פרטים אישיים</h2>
-                {isTestMode && (
-                  <div className="absolute top-4 left-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-right shadow-sm">
-                    <label className="block text-xs font-semibold text-amber-900">תאריך בדיקה</label>
-                    <input type="date" value={testDate} onChange={(event) => setTestDate(event.target.value)} className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 text-sm text-slate-800" />
-                  </div>
-                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">שם פרטי</label>
@@ -217,7 +255,7 @@ export function SeatSelection() {
                   <div>
                     <h2 className="text-2xl font-semibold text-slate-800">בחירת מושבים</h2>
                     <p className="text-slate-500 mt-1">בחרו את המושבים הרצויים מהמפה.</p>
-                    {bookingPolicy?.priorityWindow && <p className="mt-2 text-sm font-medium text-amber-800">עד 6 בספטמבר 2026: {lastYearChoice !== "not-confirmed" && lastYearData?.found ? "אפשר לבחור רק את המושבים שבהם ישבת בשנה שעברה." : "אפשר לבחור רק מושבים שהיו פנויים בשנה שעברה."}</p>}
+                    {bookingPolicy?.priorityWindow && <p className="mt-2 text-sm font-medium text-amber-800">עד 6 בספטמבר 2026: {lastYearChoice !== "not-confirmed" && lastYearData?.found ? "אפשר לבחור את המושבים שבהם ישבת בשנה שעברה, או מושבים שהיו פנויים בשנה שעברה." : "אפשר לבחור רק מושבים שהיו פנויים בשנה שעברה."}</p>}
                   </div>
                   <div className="text-sm font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded-full">
                     נבחרו: {selectedSeats.length}
@@ -311,6 +349,11 @@ export function SeatSelection() {
                 className="space-y-6"
               >
                 <h2 className="text-2xl font-semibold text-slate-800">אישור תשלום</h2>
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-center text-indigo-950">
+                  <p className="text-sm font-medium">לתשלום עבור {selectedSeats.length} {selectedSeats.length === 1 ? "מושב" : "מושבים"}</p>
+                  <p className="mt-1 text-3xl font-bold" dir="ltr">₪{totalAmount.toLocaleString("he-IL")}</p>
+                  <p className="mt-1 text-xs text-indigo-700">₪{SEAT_PRICE} לכל מושב</p>
+                </div>
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex gap-3 text-yellow-800">
                   <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                   <p className="text-sm">
@@ -349,6 +392,7 @@ export function SeatSelection() {
                       </div>
                     )}
                   </div>
+                  {imageNotice && <p className="mt-2 text-xs text-slate-600">{imageNotice}</p>}
                 </div>
 
                 <div className="flex justify-between gap-3 pt-4 border-t border-stone-100">

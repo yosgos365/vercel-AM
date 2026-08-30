@@ -7,6 +7,10 @@
       "includeFiles": "dist/server.cjs"
     }
   },
+  "crons": [
+    { "path": "/api/internal/daily-backup", "schedule": "0 21 * * *" },
+    { "path": "/api/internal/daily-backup", "schedule": "0 22 * * *" }
+  ],
   "routes": [
     {
       "src": "/api/(.*)",

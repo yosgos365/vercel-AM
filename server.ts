@@ -6,7 +6,7 @@ import fs from "fs/promises";
 import bodyParser from "body-parser";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
-import { addSeatAudit, attemptLogin, clearAuditLog, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, readApplicationState, revokeSession, setPassword, writeApplicationState } from "./database";
+import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
@@ -20,10 +20,12 @@ const DATA_DIR = process.env.DATA_DIR || process.cwd();
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || "ahavat-menachem.firebasestorage.app";
 const MAX_PAYMENT_IMAGE_BYTES = 5 * 1024 * 1024;
+const SEAT_PRICE = 150;
 const SEAT_IDS = new Set(SEATS.map((seat) => seat.id));
 const PRIORITY_BOOKING_END = "2026-09-06";
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "213223";
 const DEVELOPER_SESSION_MS = 15 * 60 * 1000;
+const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
 
@@ -79,13 +81,8 @@ const israelToday = () => {
   return `${value("year")}-${value("month")}-${value("day")}`;
 };
 
-const effectiveBookingDate = (testDate: unknown, isTestRequest: boolean) =>
-  isTestRequest && typeof testDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(testDate)
-    ? testDate
-    : israelToday();
-
-async function bookingRules(firstName: string, lastName: string, identityConfirmed: boolean, testDate: unknown, isTestRequest: boolean) {
-  const date = effectiveBookingDate(testDate, isTestRequest);
+async function bookingRules(firstName: string, lastName: string, identityConfirmed: boolean) {
+  const date = israelToday();
   const priorityWindow = date <= PRIORITY_BOOKING_END;
   const historicalMatch = findLastYearUser(firstName, lastName);
   const db = await readDB();
@@ -93,11 +90,12 @@ async function bookingRules(firstName: string, lastName: string, identityConfirm
   const confirmedLastYearSeats = identityConfirmed && historicalMatch.found
     ? (historicalMatch.seats || []).filter((seatId) => SEAT_IDS.has(seatId))
     : [];
+  const seatsEmptyLastYear = SEATS.map((seat) => seat.id).filter((seatId) => !lastYearOccupiedSeats.includes(seatId));
   const allowedSeatIds = !priorityWindow
     ? [...SEAT_IDS]
     : confirmedLastYearSeats.length > 0
-      ? confirmedLastYearSeats
-      : SEATS.map((seat) => seat.id).filter((seatId) => !lastYearOccupiedSeats.includes(seatId));
+      ? [...new Set([...confirmedLastYearSeats, ...seatsEmptyLastYear])]
+      : seatsEmptyLastYear;
   return { date, priorityWindow, lastYearOccupiedSeats, allowedSeatIds, historicalMatch };
 }
 
@@ -230,14 +228,11 @@ app.get("/api/seats", async (req, res) => {
 
 // Public: Check if user exists in last year DB
 app.post("/api/check-last-year", async (req, res) => {
-  const { firstName, lastName, phone, testDate } = req.body;
-  const isTestRequest = typeof phone === "string" && phone.trim().toUpperCase() === "TRE";
+  const { firstName, lastName } = req.body;
   const rules = await bookingRules(
     typeof firstName === "string" ? firstName : "",
     typeof lastName === "string" ? lastName : "",
     false,
-    testDate,
-    isTestRequest,
   );
   res.json({
     ...rules.historicalMatch,
@@ -259,7 +254,11 @@ const deleteStoredPaymentImage = async (imageUrl: string) => {
   const firebasePath = firebaseImagePathFromUrl(imageUrl);
   if (firebasePath) {
     const bucket = firebaseStorageBucket();
-    if (bucket) await bucket.file(firebasePath).delete({ ignoreNotFound: true }).catch(() => undefined);
+    if (!bucket) throw new Error("אחסון Firebase לצילומי התשלום אינו זמין");
+    // ignoreNotFound means that a file already deleted is considered a
+    // successful cleanup. Other failures must reach the administrator rather
+    // than leaving an undisclosed orphan file in Storage.
+    await bucket.file(firebasePath).delete({ ignoreNotFound: true });
     return;
   }
 };
@@ -301,14 +300,56 @@ const servePaymentImage = async (req: express.Request, res: express.Response) =>
 app.get("/api/payment-images/:fileId", servePaymentImage);
 app.get("/api/payment-images/*", servePaymentImage);
 
+// Called by Vercel Cron. The idempotent daily backup function ensures the
+// duplicate winter/summer schedules still create one backup per Israel date.
+app.get("/api/internal/daily-backup", async (req, res) => {
+  if (!CRON_SECRET || req.header("Authorization") !== `Bearer ${CRON_SECRET}`) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const backup = await createApplicationBackup();
+    res.json({ success: true, backup });
+  } catch {
+    res.status(503).json({ error: "יצירת הגיבוי נכשלה" });
+  }
+});
+
 app.post("/api/admin/developer/clear-requests", developerAuth, async (req, res) => {
   const db = await readDB();
-  await Promise.all(db.requests.map(request => deleteStoredPaymentImage(request.paymentImage)));
+  try {
+    await Promise.all(db.requests.map(request => deleteStoredPaymentImage(request.paymentImage)));
+  } catch {
+    return res.status(503).json({ error: "לא ניתן למחוק את כל צילומי התשלום מ־Firebase. הבקשות לא נמחקו." });
+  }
   db.requests = [];
   db.seats = {};
   await writeDB(db);
   clearAuditLog();
   res.json({ success: true });
+});
+
+app.get("/api/admin/developer/backups", developerAuth, async (_req, res) => {
+  try {
+    res.json({ backups: await listApplicationBackups() });
+  } catch {
+    res.status(503).json({ error: "לא ניתן לטעון את גרסאות הגיבוי" });
+  }
+});
+
+app.post("/api/admin/developer/backups/create", developerAuth, async (_req, res) => {
+  try {
+    res.json({ success: true, backup: await createApplicationBackup() });
+  } catch {
+    res.status(503).json({ error: "יצירת הגיבוי נכשלה" });
+  }
+});
+
+app.post("/api/admin/developer/backups/:id/restore", developerAuth, async (req, res) => {
+  try {
+    await restoreApplicationBackup(req.params.id);
+    addSeatAudit("שוחזרה גרסת גיבוי", { actor: "מפתח", details: req.params.id });
+    res.json({ success: true });
+  } catch {
+    res.status(404).json({ error: "לא ניתן לשחזר את גרסת הגיבוי שנבחרה" });
+  }
 });
 
 app.post("/api/admin/developer/create-demo", developerAuth, async (req, res) => {
@@ -379,7 +420,7 @@ app.post("/api/admin/developer/create-demo", developerAuth, async (req, res) => 
 
 // Public: Submit a request
 app.post("/api/request", async (req, res) => {
-  const { firstName, lastName, phone, seats, paymentImage, lastYearSeats, lastYearIdentityConfirmed, lastYearChoice, testDate } = req.body;
+  const { firstName, lastName, phone, seats, paymentImage, lastYearSeats, lastYearIdentityConfirmed, lastYearChoice } = req.body;
   const normalizedPhone = typeof phone === "string" ? phone.replace(/[\s-]/g, "").replace(/^\+972/, "0") : "";
   const isTestRequest = typeof phone === "string" && phone.trim().toUpperCase() === "TRE";
   if (!isTestRequest && !/^0(?:[2-4]|[8-9]|5\d|7\d)\d{7}$/.test(normalizedPhone)) {
@@ -392,13 +433,11 @@ app.post("/api/request", async (req, res) => {
     typeof firstName === "string" ? firstName : "",
     typeof lastName === "string" ? lastName : "",
     Boolean(lastYearIdentityConfirmed),
-    testDate,
-    isTestRequest,
   );
   if (rules.priorityWindow && seats.some((seatId) => !rules.allowedSeatIds.includes(seatId))) {
     return res.status(403).json({
       error: rules.historicalMatch.found && lastYearIdentityConfirmed
-        ? "עד 6 בספטמבר 2026 ניתן לבקש רק את המושב או המושבים שבהם ישבת בשנה שעברה."
+        ? "עד 6 בספטמבר 2026 ניתן לבקש את המושב או המושבים שבהם ישבת בשנה שעברה, או מושב שהיה פנוי בשנה שעברה."
         : "עד 6 בספטמבר 2026 לקוח חדש יכול לבקש רק מושבים שהיו פנויים בשנה שעברה.",
     });
   }
@@ -577,34 +616,48 @@ app.post("/api/admin/resolve-conflict", adminAuth, async (req, res) => {
     replacementSeats.add(update.newSeat);
   }
 
-  {
-    winnerReq.requestedSeats ??= [...winnerReq.seats];
-    winnerReq.status = "approved";
-    for (const s of winnerReq.seats) {
-      db.seats[s] = {
-        status: "taken",
-        owner: `${winnerReq.firstName} ${winnerReq.lastName}`
-      };
-    }
-  }
-
+  const affectedRequestIds = new Set<string>([winnerReqId]);
   for (const update of loserUpdates) {
     const loserReq = db.requests.find(r => r.id === update.reqId);
     if (loserReq) {
       loserReq.requestedSeats ??= [...loserReq.seats];
       loserReq.seats = loserReq.seats.map(s => s === seatId ? update.newSeat : s);
-      loserReq.status = "approved";
-      for (const s of loserReq.seats) {
-        db.seats[s] = {
-          status: "taken",
-          owner: `${loserReq.firstName} ${loserReq.lastName}`
-        };
+      affectedRequestIds.add(loserReq.id);
+    }
+  }
+
+  // A ruling belongs to one seat only. If one of the affected requests still
+  // overlaps another pending request on a different seat, leave it pending
+  // for that separate ruling instead of approving every seat in its request.
+  for (const [id, seat] of Object.entries(db.seats)) {
+    if (seat.status === "pending") delete db.seats[id];
+  }
+  const affectedRequests = db.requests.filter(item => affectedRequestIds.has(item.id));
+  for (const request of affectedRequests) {
+    const hasAnotherConflict = db.requests.some(item =>
+      item.status === "pending" &&
+      item.id !== request.id &&
+      item.seats.some(otherSeat => request.seats.includes(otherSeat)),
+    );
+    const containsTakenSeat = request.seats.some(item => db.seats[item]?.status === "taken");
+    if (!hasAnotherConflict && !containsTakenSeat) {
+      request.status = "approved";
+      for (const item of request.seats) {
+        db.seats[item] = { status: "taken", owner: `${request.firstName} ${request.lastName}` };
       }
+      request.seats.forEach(item => addSeatAudit("אושר שיבוץ לאחר פסיקת כפילות", { seatId: item, requestId: request.id, toOwner: `${request.firstName} ${request.lastName}` }));
+    }
+  }
+  // Rebuild the pending-seat index after the per-seat ruling. A seat with a
+  // remaining duplicate stays pending until its own decision is made.
+  for (const request of db.requests.filter(item => item.status === "pending")) {
+    for (const item of request.seats) {
+      if (!db.seats[item]) db.seats[item] = { status: "pending", reservedBy: request.id };
     }
   }
 
   await writeDB(db);
-  addSeatAudit("טופלה כפילות", { requestId: winnerReqId, seatId, details: "שובצו זוכה ומושבים חלופיים" });
+  addSeatAudit("טופלה כפילות", { requestId: winnerReqId, seatId, details: "הפסיקה חלה על מושב זה בלבד" });
   res.json({ success: true });
 });
 
@@ -658,8 +711,12 @@ app.post("/api/admin/requests/:id/delete", adminAuth, async (req, res) => {
       }
     }
     
+    try {
+      await deleteStoredPaymentImage(request.paymentImage);
+    } catch {
+      return res.status(503).json({ error: "לא ניתן למחוק את צילום התשלום מ־Firebase. הבקשה לא נמחקה." });
+    }
     await writeDB(db);
-    await deleteStoredPaymentImage(request.paymentImage);
     addSeatAudit("בקשה נמחקה", { requestId: request.id, actor: "מנהל" });
     res.json({ success: true });
   } else {
@@ -764,9 +821,9 @@ app.get("/api/admin/export.xlsx", adminAuth, async (req, res) => {
   const { requests, auditLog } = getDashboardData();
   const escapeXml = (value: unknown) => String(value ?? "").replace(/[&<>\"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;" })[char]!);
   const table = (title: string, headers: string[], rows: string[][]) => `<Worksheet ss:Name="${escapeXml(title)}"><Table><Row>${headers.map(header => `<Cell><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`).join("")}</Row>${rows.map(row => `<Row>${row.map(value => `<Cell><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`).join("")}</Row>`).join("")}</Table></Worksheet>`;
-  const requestsRows = requests.map(item => [new Date(item.timestamp).toLocaleString("he-IL"), item.firstName, item.lastName, item.phone, item.requestedSeats.join(", "), item.seats.join(", "), item.status === "approved" ? "אושרה" : item.status === "rejected" ? "נדחתה" : "ממתינה", item.rejectionReason || ""]);
+  const requestsRows = requests.map(item => [new Date(item.timestamp).toLocaleString("he-IL"), item.firstName, item.lastName, item.phone, item.requestedSeats.join(", "), `${item.requestedSeats.length * SEAT_PRICE} ₪`, item.seats.join(", "), item.status === "approved" ? "אושרה" : item.status === "rejected" ? "נדחתה" : "ממתינה", item.rejectionReason || ""]);
   const auditRows = auditLog.map(item => [new Date(item.timestamp).toLocaleString("he-IL"), item.action, item.seatId || "", item.fromOwner || "", item.toOwner || "", item.requestId || "", item.details || ""]);
-  const workbook = `<?xml version="1.0" encoding="UTF-8"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${table("בקשות", ["תאריך", "שם פרטי", "שם משפחה", "טלפון", "מושבים מבוקשים", "מושבים בפועל", "סטטוס", "סיבת דחייה"], requestsRows)}${table("יומן שיבוצים", ["תאריך", "פעולה", "מושב", "מבעלים", "לבעלים", "בקשה", "פירוט"], auditRows)}</Workbook>`;
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${table("בקשות", ["תאריך", "שם פרטי", "שם משפחה", "טלפון", "מושבים מבוקשים", "סכום לתשלום", "מושבים בפועל", "סטטוס", "סיבת דחייה"], requestsRows)}${table("יומן שיבוצים", ["תאריך", "פעולה", "מושב", "מבעלים", "לבעלים", "בקשה", "פירוט"], auditRows)}</Workbook>`;
   res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
   res.setHeader("Content-Disposition", "attachment; filename=seat-management.xls");
   res.send(Buffer.from(workbook, "utf8"));

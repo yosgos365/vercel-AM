@@ -58,6 +58,13 @@ export interface ApplicationState {
   lastYearUsers: DashboardData["lastYearUsers"];
 }
 
+export interface BackupSummary {
+  id: string;
+  timestamp: number;
+  date: string;
+  requestsCount: number;
+}
+
 // Requests are the source of truth.  The compact seat index is only a fast
 // lookup for maps, so rebuild it if an old serverless invocation ever wrote an
 // incomplete index to Firestore.
@@ -83,6 +90,13 @@ const DB_PATH = path.join(ROOT, "synagogue.db");
 const LEGACY_PATH = path.join(ROOT, "database.json");
 const BACKUP_DIR = path.join(ROOT, "backups");
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
+const MAX_BACKUPS = 30;
+
+const israelDate = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const value = (type: string) => parts.find(part => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+};
 
 let db: any;
 let firestorePromise: Promise<ReturnType<typeof getFirestore> | null> | null = null;
@@ -313,6 +327,9 @@ export async function initDatabase() {
     );
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS login_attempts (ip TEXT NOT NULL, attempted_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS application_backups (
+      id TEXT PRIMARY KEY, date TEXT NOT NULL, timestamp INTEGER NOT NULL, state_json TEXT NOT NULL
+    );
   `);
   try { db.exec("ALTER TABLE requests ADD COLUMN last_year_identity_confirmed INTEGER NOT NULL DEFAULT 0"); } catch { /* existing database */ }
   try { db.exec("ALTER TABLE requests ADD COLUMN last_year_choice TEXT NOT NULL DEFAULT 'not-confirmed'"); } catch { /* existing database */ }
@@ -340,6 +357,62 @@ export async function backupDatabase() {
   const entries = await fs.readdir(BACKUP_DIR);
   const backups = (await Promise.all(entries.filter(name => name.endsWith(".db")).map(async name => ({ name, stat: await fs.stat(path.join(BACKUP_DIR, name)) })))).sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
   await Promise.all(backups.slice(30).map(item => fs.unlink(path.join(BACKUP_DIR, item.name))));
+}
+
+// A backup is a complete snapshot of the seating data (not payment images,
+// which remain private files in Firebase Storage). One snapshot is kept per
+// Israel calendar day and only the 30 newest snapshots are retained.
+export async function createApplicationBackup(): Promise<BackupSummary> {
+  const state = structuredClone(readApplicationState());
+  const date = israelDate();
+  const id = `daily-${date}`;
+  const timestamp = Date.now();
+  const summary = { id, date, timestamp, requestsCount: state.requests.length };
+  if (useFirestore()) {
+    const firestore = await firestoreForProduction();
+    if (!firestore) throw new Error("חיבור Firestore אינו זמין");
+    const reference = firestore.collection("applicationBackups").doc(id);
+    await firestore.runTransaction(async transaction => {
+      const existing = await transaction.get(reference);
+      if (!existing.exists) transaction.set(reference, { ...summary, state });
+    });
+    const oldBackups = await firestore.collection("applicationBackups").orderBy("timestamp", "desc").get();
+    await Promise.all(oldBackups.docs.slice(MAX_BACKUPS).map(document => document.ref.delete()));
+    return summary;
+  }
+  db.prepare("INSERT OR IGNORE INTO application_backups (id, date, timestamp, state_json) VALUES (?, ?, ?, ?)")
+    .run(id, date, timestamp, JSON.stringify(state));
+  const oldBackups = db.prepare("SELECT id FROM application_backups ORDER BY timestamp DESC").all() as Array<{ id: string }>;
+  for (const backup of oldBackups.slice(MAX_BACKUPS)) db.prepare("DELETE FROM application_backups WHERE id = ?").run(backup.id);
+  return summary;
+}
+
+export async function listApplicationBackups(): Promise<BackupSummary[]> {
+  if (useFirestore()) {
+    const firestore = await firestoreForProduction();
+    if (!firestore) throw new Error("חיבור Firestore אינו זמין");
+    const backups = await firestore.collection("applicationBackups").orderBy("timestamp", "desc").limit(MAX_BACKUPS).get();
+    return backups.docs.map(document => {
+      const item = document.data();
+      return { id: document.id, date: String(item.date || ""), timestamp: Number(item.timestamp || 0), requestsCount: Number(item.requestsCount || 0) };
+    });
+  }
+  return (db.prepare("SELECT id, date, timestamp, state_json FROM application_backups ORDER BY timestamp DESC LIMIT ?").all(MAX_BACKUPS) as Array<{ id: string; date: string; timestamp: number; state_json: string }>)
+    .map(item => ({ id: item.id, date: item.date, timestamp: Number(item.timestamp), requestsCount: parseJson<ApplicationState>(item.state_json, { seats: {}, requests: [], lastYearUsers: [] }).requests.length }));
+}
+
+export async function restoreApplicationBackup(id: string) {
+  let state: ApplicationState | null = null;
+  if (useFirestore()) {
+    const firestore = await firestoreForProduction();
+    const backup = await firestore?.collection("applicationBackups").doc(id).get();
+    state = backup?.data()?.state as ApplicationState | undefined || null;
+  } else {
+    const backup = db.prepare("SELECT state_json FROM application_backups WHERE id = ?").get(id) as { state_json?: string } | undefined;
+    state = backup?.state_json ? parseJson<ApplicationState>(backup.state_json, { seats: {}, requests: [], lastYearUsers: [] }) : null;
+  }
+  if (!state || !Array.isArray(state.requests) || !state.seats || !Array.isArray(state.lastYearUsers)) throw new Error("גרסת הגיבוי אינה זמינה");
+  await writeApplicationState(state);
 }
 
 export function getDashboardData(): DashboardData {

@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 firebase-service-account.json
+synagogue.db
+synagogue.db-shm
+synagogue.db-wal
+backups/

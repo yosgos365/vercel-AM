@@ -42,6 +42,16 @@ interface DBState {
   auditLog?: Array<{ id: number; timestamp: number; action: string; seatId?: string; fromOwner?: string; toOwner?: string; details?: string }>;
 }
 
+interface BackupSummary {
+  id: string;
+  date: string;
+  timestamp: number;
+  requestsCount: number;
+}
+
+const SEAT_PRICE = 150;
+const requestTotal = (request: Request) => (request.requestedSeats ?? request.seats).length * SEAT_PRICE;
+
 export function AdminDashboard() {
   const adminToken = useStore(state => state.adminToken);
   const logout = useStore(state => state.logout);
@@ -68,6 +78,7 @@ export function AdminDashboard() {
   const [showDeveloperAccess, setShowDeveloperAccess] = useState(false);
   const [developerPassword, setDeveloperPassword] = useState("");
   const [developerMessage, setDeveloperMessage] = useState("");
+  const [backups, setBackups] = useState<BackupSummary[]>([]);
   const [developerToken, setDeveloperToken] = useState(() => localStorage.getItem("synagogue-developer-token") || "");
   const [developerDeviceId] = useState(() => {
     const existing = localStorage.getItem("synagogue-developer-device");
@@ -202,6 +213,30 @@ export function AdminDashboard() {
     loadData();
   };
 
+  const loadBackups = async () => {
+    const response = await fetch("/api/admin/developer/backups", { headers: developerHeaders() });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) { setDeveloperMessage(result?.error || "לא ניתן לטעון את גרסאות הגיבוי."); return; }
+    setBackups(Array.isArray(result?.backups) ? result.backups : []);
+  };
+  const createBackupNow = async () => {
+    setDeveloperMessage("יוצר גיבוי...");
+    const response = await fetch("/api/admin/developer/backups/create", { method: "POST", headers: developerHeaders() });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) { setDeveloperMessage(result?.error || "יצירת הגיבוי נכשלה."); return; }
+    setDeveloperMessage("נוצר גיבוי חדש.");
+    await loadBackups();
+  };
+  const restoreBackup = async (backup: BackupSummary) => {
+    if (!window.confirm(`לשחזר את הגרסה מ־${new Date(backup.timestamp).toLocaleString("he-IL")}? כל הנתונים הנוכחיים יוחלפו.`)) return;
+    setDeveloperMessage("משחזר גיבוי...");
+    const response = await fetch(`/api/admin/developer/backups/${backup.id}/restore`, { method: "POST", headers: developerHeaders() });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) { setDeveloperMessage(result?.error || "שחזור הגיבוי נכשל."); return; }
+    setDeveloperMessage("הגיבוי שוחזר בהצלחה.");
+    await loadData();
+  };
+
   const rejectRequest = async () => {
     if (!rejectingRequest || !rejectionReason.trim()) return;
     const res = await fetch(`/api/admin/requests/${rejectingRequest.id}/reject`, {
@@ -285,14 +320,24 @@ export function AdminDashboard() {
 
   const resolveRequest = async () => {
     if (!reassigningRequest || reassignmentSeats.length !== reassigningRequest.seats.length) return;
-    await fetch(`/api/admin/requests/${reassigningRequest.id}/resolve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${adminToken}` },
-      body: JSON.stringify({ assignedSeats: reassignmentSeats })
-    });
-    setReassigningRequest(null);
-    setReassignmentSeats([]);
-    loadData();
+    setActionError("");
+    try {
+      const response = await fetch(`/api/admin/requests/${reassigningRequest.id}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${adminToken}` },
+        body: JSON.stringify({ assignedSeats: reassignmentSeats })
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        setActionError(result?.error || "השיבוץ מחדש לא נשמר. נסה שוב.");
+        return;
+      }
+      setReassigningRequest(null);
+      setReassignmentSeats([]);
+      await loadData();
+    } catch {
+      setActionError("לא ניתן לשמור את השיבוץ מחדש. בדוק את החיבור ונסה שוב.");
+    }
   };
 
   const reopenApprovedRequest = async (request: Request) => {
@@ -573,7 +618,7 @@ export function AdminDashboard() {
               <button onClick={exportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium inline-flex items-center gap-2"><Download className="w-4 h-4" /> ייצוא Excel</button>
             </div>
             <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="w-full min-w-[1080px] text-sm text-right">
+              <table className="w-full min-w-[1160px] text-sm text-right">
                 <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
                   <tr>
                     <th className="p-3 font-medium">לקוח</th>
@@ -581,6 +626,7 @@ export function AdminDashboard() {
                     <th className="p-3 font-medium">נשלחה בתאריך</th>
                     <th className="p-3 font-medium">מיקום בתשפ״ו</th>
                     <th className="p-3 font-medium">בקשה</th>
+                    <th className="p-3 font-medium">סכום לתשלום</th>
                     <th className="p-3 font-medium">שיבוץ סופי</th>
                     <th className="p-3 font-medium">סטטוס</th>
                     <th className="p-3 font-medium">צילום העברה</th>
@@ -597,6 +643,7 @@ export function AdminDashboard() {
                         {req.isLastYearUser && req.lastYearSeats?.length ? <><div className="font-mono text-xs text-blue-800">{req.lastYearSeats.join(", ")}</div><div className="text-xs text-slate-500 mt-1">{req.lastYearChoice === "same-seat" ? "ביקש לשמור" : "ביקש לשנות"}</div></> : <span className="text-slate-400">לא נמצא</span>}
                       </td>
                       <td className="p-3"><div className="font-mono text-xs text-slate-800">{(req.requestedSeats ?? req.seats).join(", ")}</div></td>
+                      <td className="p-3 whitespace-nowrap font-semibold text-slate-800" dir="ltr">₪{requestTotal(req).toLocaleString("he-IL")}</td>
                       <td className="p-3">
                         {req.status === "approved" ? <><div className="font-mono text-xs text-emerald-800">{req.seats.join(", ") || "ללא מושב"}</div>{req.seatChanges?.length ? <div className="text-xs text-slate-500 mt-1">שונה לאחר אישור: {req.seatChanges.map(change => change.seatId).join(", ")}</div> : null}</> : <span className="text-slate-400">{req.status === "pending" ? "טרם שובץ" : "לא שובץ"}</span>}
                       </td>
@@ -624,7 +671,7 @@ export function AdminDashboard() {
                     </tr>
                   ))}
                   {allRequests.length === 0 && (
-                    <tr><td colSpan={9} className="p-8 text-center text-slate-500">לא נמצאו בקשות.</td></tr>
+                    <tr><td colSpan={10} className="p-8 text-center text-slate-500">לא נמצאו בקשות.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1274,7 +1321,7 @@ export function AdminDashboard() {
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-5" dir="rtl">
               <div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold text-slate-800">הגדרות מפתח</h3><p className="text-sm text-slate-500 mt-1">הגישה פעילה רק בדפדפן ובמכשיר הזה.</p></div><button onClick={() => setShowDeveloperAccess(false)} className="text-slate-500 hover:text-slate-800">סגירה</button></div>
-              {!developerToken ? <form onSubmit={unlockDeveloper} className="space-y-4"><label className="block text-sm font-medium text-slate-700">סיסמת מפתח<input autoFocus type="password" value={developerPassword} onChange={event => setDeveloperPassword(event.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-left" dir="ltr" /></label><button type="submit" disabled={!developerPassword} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 rounded-lg disabled:opacity-50">כניסה להגדרות מפתח</button>{developerMessage && <p className="text-sm text-rose-700">{developerMessage}</p>}</form> : <div className="space-y-4"><div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">פעולות אלה מיועדות להכנת סביבת בדיקה בלבד. מחיקה אינה ניתנת לשחזור.</div><button onClick={() => runDeveloperAction("/api/admin/developer/create-demo", "ליצור כעת 22 בקשות הדגמה חדשות? הבקשות הקיימות יישארו במערכת.")} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg">צור נתוני דמה</button><button onClick={() => runDeveloperAction("/api/admin/developer/clear-requests", "למחוק את כל הבקשות, האישורים וצילומי התשלום הקיימים? פעולה זו אינה ניתנת לשחזור.")} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-3 rounded-lg">מחק את כל הבקשות והאישורים</button><button onClick={() => { localStorage.removeItem("synagogue-developer-token"); setDeveloperToken(""); setDeveloperMessage("מצב המפתח ננעל במכשיר זה."); }} className="w-full text-slate-600 hover:text-slate-900 text-sm font-medium py-2">נעל מצב מפתח במכשיר זה</button>{developerMessage && <p className="text-sm text-indigo-700 text-center">{developerMessage}</p>}</div>}
+              {!developerToken ? <form onSubmit={unlockDeveloper} className="space-y-4"><label className="block text-sm font-medium text-slate-700">סיסמת מפתח<input autoFocus type="password" value={developerPassword} onChange={event => setDeveloperPassword(event.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-left" dir="ltr" /></label><button type="submit" disabled={!developerPassword} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 rounded-lg disabled:opacity-50">כניסה להגדרות מפתח</button>{developerMessage && <p className="text-sm text-rose-700">{developerMessage}</p>}</form> : <div className="space-y-4"><div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">פעולות אלה מיועדות להכנת סביבת בדיקה בלבד. מחיקה אינה ניתנת לשחזור.</div><button onClick={() => runDeveloperAction("/api/admin/developer/create-demo", "ליצור כעת 22 בקשות הדגמה חדשות? הבקשות הקיימות יישארו במערכת.")} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg">צור נתוני דמה</button><button onClick={() => runDeveloperAction("/api/admin/developer/clear-requests", "למחוק את כל הבקשות, האישורים וצילומי התשלום הקיימים? פעולה זו אינה ניתנת לשחזור.")} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-3 rounded-lg">מחק את כל הבקשות והאישורים</button><div className="rounded-lg border border-slate-200 p-3 space-y-3"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-slate-800">גרסאות גיבוי</p><p className="text-xs text-slate-500">נשמרת גרסה יומית, עד 30 גרסאות. גישה למפתח בלבד.</p></div><button onClick={() => void loadBackups()} className="text-sm font-semibold text-indigo-700 hover:underline">טען גרסאות</button></div><button onClick={() => void createBackupNow()} className="w-full bg-slate-700 hover:bg-slate-800 text-white font-semibold py-2 rounded-lg">צור גיבוי כעת</button>{backups.length > 0 && <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 border-t border-slate-100">{backups.map(backup => <div key={backup.id} className="flex items-center justify-between gap-2 py-2 text-sm"><span>{new Date(backup.timestamp).toLocaleString("he-IL")} · {backup.requestsCount} בקשות</span><button onClick={() => void restoreBackup(backup)} className="shrink-0 text-rose-700 font-semibold hover:underline">שחזר</button></div>)}</div>}</div><button onClick={() => { localStorage.removeItem("synagogue-developer-token"); setDeveloperToken(""); setDeveloperMessage("מצב המפתח ננעל במכשיר זה."); setBackups([]); }} className="w-full text-slate-600 hover:text-slate-900 text-sm font-medium py-2">נעל מצב מפתח במכשיר זה</button>{developerMessage && <p className="text-sm text-indigo-700 text-center">{developerMessage}</p>}</div>}
             </motion.div>
           </div>
         )}
