@@ -82,6 +82,8 @@ export function AdminDashboard() {
   const [showLastYearTable, setShowLastYearTable] = useState(false);
   const [lastYearTableView, setLastYearTableView] = useState<"seats" | "names">("seats");
   const [lastYearTable, setLastYearTable] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
+  const [lastYearTableMessage, setLastYearTableMessage] = useState("");
+  const [savingLastYearTable, setSavingLastYearTable] = useState(false);
   const [developerToken, setDeveloperToken] = useState(() => localStorage.getItem("synagogue-developer-token") || "");
   const [developerDeviceId] = useState(() => {
     const existing = localStorage.getItem("synagogue-developer-device");
@@ -250,6 +252,7 @@ export function AdminDashboard() {
       };
     }));
     setDeveloperMessage("");
+    setLastYearTableMessage("");
     setLastYearTableView("seats");
     setShowLastYearTable(true);
   };
@@ -261,20 +264,35 @@ export function AdminDashboard() {
       groupedSeats.set(name, [...(groupedSeats.get(name) || []), row.id]);
     }
     const users = [...groupedSeats.entries()].map(([name, seats]) => ({ name, seats }));
-    setDeveloperMessage("שומר את רשימת תשפ״ו...");
-    const response = await fetch("/api/admin/developer/last-year-users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...developerHeaders() },
-      body: JSON.stringify({ users }),
-    });
-    const result = await response.json().catch(() => null);
-    if (!response.ok) {
-      setDeveloperMessage(result?.error || "שמירת הרשימה נכשלה.");
-      return;
+    setLastYearTableMessage("שומר את הרשימה...");
+    setSavingLastYearTable(true);
+    try {
+      const response = await fetch("/api/admin/developer/last-year-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...developerHeaders() },
+        body: JSON.stringify({ users }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        if (response.status === 403) {
+          localStorage.removeItem("synagogue-developer-token");
+          setDeveloperToken("");
+          setShowLastYearTable(false);
+          setShowDeveloperAccess(true);
+          setDeveloperMessage("פג תוקף כניסת המפתח. יש להיכנס מחדש כדי לשמור את הרשימה.");
+          return;
+        }
+        setLastYearTableMessage(result?.error || "שמירת הרשימה נכשלה. נסה שוב.");
+        return;
+      }
+      setShowLastYearTable(false);
+      setDeveloperMessage(`נשמרו ${result.count} רשומות של תשפ״ו.`);
+      await loadData();
+    } catch {
+      setLastYearTableMessage("אין חיבור לשרת. בדוק את החיבור ונסה שוב.");
+    } finally {
+      setSavingLastYearTable(false);
     }
-    setShowLastYearTable(false);
-    setDeveloperMessage(`נשמרו ${result.count} רשומות של תשפ״ו.`);
-    await loadData();
   };
 
   const rejectRequest = async () => {
@@ -1393,9 +1411,10 @@ export function AdminDashboard() {
                 </table>}
               </div>
               <div className="flex flex-col-reverse sm:flex-row gap-3 shrink-0">
+                {lastYearTableMessage && <p className="sm:self-center text-sm text-slate-600">{lastYearTableMessage}</p>}
                 <div className="flex-1" />
                 <button onClick={() => setShowLastYearTable(false)} className="sm:w-auto bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-5 py-2 rounded-lg">ביטול</button>
-                <button onClick={() => void saveLastYearTable()} className="sm:w-auto bg-teal-700 hover:bg-teal-800 text-white font-semibold px-5 py-2 rounded-lg">שמור שינויים</button>
+                <button onClick={() => void saveLastYearTable()} disabled={savingLastYearTable} className="sm:w-auto bg-teal-700 hover:bg-teal-800 text-white font-semibold px-5 py-2 rounded-lg disabled:opacity-60">{savingLastYearTable ? "שומר..." : "שמור שינויים"}</button>
               </div>
             </motion.div>
           </div>
