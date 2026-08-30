@@ -60,7 +60,7 @@ export function Home() {
               }}
             >
               {/* Static Elements */}
-              <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
+              <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
               </div>
               <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm z-0">
                 ארון קודש
@@ -73,7 +73,7 @@ export function Home() {
               <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                 עזרת גברים
               </div>
-              <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+              <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                 עזרת נשים
               </div>
 

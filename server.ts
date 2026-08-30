@@ -21,6 +21,7 @@ const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || "ahavat-menachem.firebasestorage.app";
 const MAX_PAYMENT_IMAGE_BYTES = 5 * 1024 * 1024;
 const SEAT_IDS = new Set(SEATS.map((seat) => seat.id));
+const PRIORITY_BOOKING_END = "2026-09-06";
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "213223";
 const DEVELOPER_SESSION_MS = 15 * 60 * 1000;
 const FIREBASE_IMAGE_PREFIX = "firebase:";
@@ -66,6 +67,39 @@ const isDeveloperTokenValid = (token: string, deviceId: string) => {
 
 const validateSeatList = (seats: unknown): seats is string[] =>
   Array.isArray(seats) && seats.length > 0 && seats.every((seat) => typeof seat === "string" && SEAT_IDS.has(seat)) && new Set(seats).size === seats.length;
+
+const israelToday = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+};
+
+const effectiveBookingDate = (testDate: unknown, isTestRequest: boolean) =>
+  isTestRequest && typeof testDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(testDate)
+    ? testDate
+    : israelToday();
+
+async function bookingRules(firstName: string, lastName: string, identityConfirmed: boolean, testDate: unknown, isTestRequest: boolean) {
+  const date = effectiveBookingDate(testDate, isTestRequest);
+  const priorityWindow = date <= PRIORITY_BOOKING_END;
+  const historicalMatch = findLastYearUser(firstName, lastName);
+  const db = await readDB();
+  const lastYearOccupiedSeats = [...new Set(db.lastYearUsers.flatMap((user) => user.seats).filter((seatId) => SEAT_IDS.has(seatId)))];
+  const confirmedLastYearSeats = identityConfirmed && historicalMatch.found
+    ? (historicalMatch.seats || []).filter((seatId) => SEAT_IDS.has(seatId))
+    : [];
+  const allowedSeatIds = !priorityWindow
+    ? [...SEAT_IDS]
+    : confirmedLastYearSeats.length > 0
+      ? confirmedLastYearSeats
+      : SEATS.map((seat) => seat.id).filter((seatId) => !lastYearOccupiedSeats.includes(seatId));
+  return { date, priorityWindow, lastYearOccupiedSeats, allowedSeatIds, historicalMatch };
+}
 
 const canAssignSeat = (db: DBState, seatId: string, requestId?: string) => {
   const seat = db.seats[seatId];
@@ -196,8 +230,21 @@ app.get("/api/seats", async (req, res) => {
 
 // Public: Check if user exists in last year DB
 app.post("/api/check-last-year", async (req, res) => {
-  const { firstName, lastName } = req.body;
-  res.json(findLastYearUser(firstName, lastName));
+  const { firstName, lastName, phone, testDate } = req.body;
+  const isTestRequest = typeof phone === "string" && phone.trim().toUpperCase() === "TRE";
+  const rules = await bookingRules(
+    typeof firstName === "string" ? firstName : "",
+    typeof lastName === "string" ? lastName : "",
+    false,
+    testDate,
+    isTestRequest,
+  );
+  res.json({
+    ...rules.historicalMatch,
+    priorityWindow: rules.priorityWindow,
+    lastYearOccupiedSeats: rules.lastYearOccupiedSeats,
+    effectiveDate: rules.date,
+  });
 });
 
 app.post("/api/admin/developer/unlock", adminAuth, (req, res) => {
@@ -269,7 +316,7 @@ app.post("/api/admin/developer/create-demo", developerAuth, async (req, res) => 
   const now = Date.now();
   const variation = Math.floor(Math.random() * 9000) + 1000;
   const freeSeatIds = SEATS.filter(seat => !db.seats[seat.id] || db.seats[seat.id].status === "available").map(seat => seat.id);
-  const zones = ["A", "C", "E", "G", "I", "K", "M", "O", "Q", "S", "U", "V", "WA", "WC", "WE", "WG", "WI", "WK", "WM", "WO"];
+  const zones = ["A", "C", "E", "G", "I", "K", "M", "O", "Q", "S", "U", "V", "WA", "WC", "WE", "WG"];
   const zoneGroups = zones.map(zone => freeSeatIds.filter(seat => seat.startsWith(zone)));
   const availableSeats: string[] = [];
   for (let index = 0; availableSeats.length < freeSeatIds.length; index += 1) {
@@ -332,7 +379,7 @@ app.post("/api/admin/developer/create-demo", developerAuth, async (req, res) => 
 
 // Public: Submit a request
 app.post("/api/request", async (req, res) => {
-  const { firstName, lastName, phone, seats, paymentImage, isLastYearUser, lastYearSeats, lastYearIdentityConfirmed, lastYearChoice } = req.body;
+  const { firstName, lastName, phone, seats, paymentImage, lastYearSeats, lastYearIdentityConfirmed, lastYearChoice, testDate } = req.body;
   const normalizedPhone = typeof phone === "string" ? phone.replace(/[\s-]/g, "").replace(/^\+972/, "0") : "";
   const isTestRequest = typeof phone === "string" && phone.trim().toUpperCase() === "TRE";
   if (!isTestRequest && !/^0(?:[2-4]|[8-9]|5\d|7\d)\d{7}$/.test(normalizedPhone)) {
@@ -340,6 +387,20 @@ app.post("/api/request", async (req, res) => {
   }
   if (!validateSeatList(seats)) {
     return res.status(400).json({ error: "בחירת המושבים אינה תקינה" });
+  }
+  const rules = await bookingRules(
+    typeof firstName === "string" ? firstName : "",
+    typeof lastName === "string" ? lastName : "",
+    Boolean(lastYearIdentityConfirmed),
+    testDate,
+    isTestRequest,
+  );
+  if (rules.priorityWindow && seats.some((seatId) => !rules.allowedSeatIds.includes(seatId))) {
+    return res.status(403).json({
+      error: rules.historicalMatch.found && lastYearIdentityConfirmed
+        ? "עד 6 בספטמבר 2026 ניתן לבקש רק את המושב או המושבים שבהם ישבת בשנה שעברה."
+        : "עד 6 בספטמבר 2026 לקוח חדש יכול לבקש רק מושבים שהיו פנויים בשנה שעברה.",
+    });
   }
   
   const requestId = Date.now().toString() + Math.random().toString(36).substring(7);
@@ -358,11 +419,11 @@ app.post("/api/request", async (req, res) => {
     seats,
     requestedSeats: [...seats],
     status: "pending" as const,
-    isLastYearUser,
+    isLastYearUser: Boolean(lastYearIdentityConfirmed && rules.historicalMatch.found),
     isDemo: false,
     lastYearIdentityConfirmed: Boolean(lastYearIdentityConfirmed),
     lastYearChoice: lastYearChoice === "same-seat" || lastYearChoice === "different-seats" ? lastYearChoice : "not-confirmed",
-    lastYearSeats,
+    lastYearSeats: Boolean(lastYearIdentityConfirmed) ? (rules.historicalMatch.seats || []) : (Array.isArray(lastYearSeats) ? lastYearSeats : []),
     seatChanges: [],
     paymentImage: paymentImageUrl,
     timestamp: Date.now(),

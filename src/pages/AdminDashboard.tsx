@@ -705,7 +705,7 @@ export function AdminDashboard() {
               >
 
                 {/* Static Elements Modal */}
-                <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
+                <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
                 </div>
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
@@ -716,7 +716,7 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת גברים
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -776,7 +776,7 @@ export function AdminDashboard() {
               >
 
                 {/* Static Elements Modal */}
-                <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
+                <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
                 </div>
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
@@ -785,7 +785,7 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת גברים
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -827,11 +827,11 @@ export function AdminDashboard() {
             <div id="print-map" className="print-map-preview pb-4" dir="ltr">
               <div className="print-map-title text-center text-slate-800 font-bold text-xl mb-5" dir="rtl">בית כנסת אחוות מנחם</div>
               <div className="print-map-grid inline-grid gap-0.5 mx-auto p-6 bg-white rounded-2xl border-2 border-slate-500 relative" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 60px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 64px)` }}>
-                <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-50 border border-slate-200 pointer-events-none" />
+                <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-50 border border-slate-200 pointer-events-none" />
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-slate-100 border border-slate-400 flex items-center justify-center text-base font-bold text-slate-800 pointer-events-none">ארון קודש</div>
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-slate-50 border border-slate-400 flex items-center justify-center text-base font-bold text-slate-800 pointer-events-none">בימה</div>
                 <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת גברים</div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
                 {SEATS.map(seat => {
                   const seatData = data.seats[seat.id];
                   const owner = seatData?.status === "taken" ? seatData.owner?.trim() : "";
@@ -922,10 +922,10 @@ export function AdminDashboard() {
 
               <div className="overflow-x-auto pb-4" dir="ltr">
                 <div className="inline-grid gap-1.5 mx-auto p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm relative" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 38px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 26px)` }}>
-                  <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0" />
+                  <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0" />
                   <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">ארון קודש</div>
                   <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת גברים</div>
-                  <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
+                  <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
                   {SEATS.map(seat => {
                     const isSelected = reassignmentSeats.includes(seat.id);
                     const seatData = data.seats[seat.id];
@@ -1008,7 +1008,7 @@ export function AdminDashboard() {
                 >
 
                 {/* Static Elements Modal */}
-                <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
+                <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
                 </div>
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
@@ -1016,7 +1016,7 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת גברים
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -1162,7 +1162,7 @@ export function AdminDashboard() {
                 >
 
                 {/* Static Elements Modal */}
-                <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
+                <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
                 </div>
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
@@ -1170,7 +1170,7 @@ export function AdminDashboard() {
                 <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת גברים
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -1223,7 +1223,7 @@ export function AdminDashboard() {
               <div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-bold text-slate-800">בחירת מושב חלופי</h3><p className="text-sm text-slate-600 mt-1">בחר מקום חלופי עבור {loser.firstName} {loser.lastName}. סימן × מציין את המושב שביקש ולא קיבל: {replacementPicker.requestedSeat}.</p></div><button onClick={() => setReplacementPicker(null)} className="text-slate-500 hover:text-slate-900 font-medium">חזרה לפסיקה</button></div>
               <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4" dir="ltr">
                 <div className="inline-grid gap-1 min-w-max relative" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 52px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 56px)` }}>
-                  <div style={{ gridRow: "14 / 19", gridColumn: "1 / 35" }} className="rounded-2xl bg-slate-100/70 border border-slate-200 pointer-events-none" />
+                  <div style={{ gridRow: "14 / 17", gridColumn: "1 / 35" }} className="rounded-2xl bg-slate-100/70 border border-slate-200 pointer-events-none" />
                   <div style={{ gridRow: "1 / 2", gridColumn: "14 / 18" }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-900 pointer-events-none">ארון קודש</div>
                   <div style={{ gridRow: "5 / 8", gridColumn: "14 / 17", width: "158px", justifySelf: "start" }} className="bg-indigo-50 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-800 pointer-events-none">בימה</div>
                   {SEATS.map(seat => {
@@ -1252,7 +1252,7 @@ export function AdminDashboard() {
               </div>
               <div className="overflow-auto max-h-[72vh] rounded-xl border border-slate-200 bg-slate-50 p-5" dir="ltr">
                 <div className="inline-grid gap-0.5 min-w-max relative" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 52px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 56px)` }}>
-                  <div style={{ gridRow: "14 / 19", gridColumn: "1 / 35" }} className="rounded-2xl bg-slate-100/70 border border-slate-200 pointer-events-none" />
+                  <div style={{ gridRow: "14 / 17", gridColumn: "1 / 35" }} className="rounded-2xl bg-slate-100/70 border border-slate-200 pointer-events-none" />
                   <div style={{ gridRow: "1 / 2", gridColumn: "14 / 18" }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-900 pointer-events-none">ארון קודש</div>
                   <div style={{ gridRow: "5 / 8", gridColumn: "14 / 17", width: "158px", justifySelf: "start" }} className="bg-indigo-50 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-800 pointer-events-none">בימה</div>
                   {SEATS.map((seat) => {

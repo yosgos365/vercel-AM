@@ -71,16 +71,7 @@ export const SEATS: SeatConfig[] = [
   ...createTable('WG', 14, 26, 3, 1),
   ...createTable('WH', 14, 30, 3, 1),
 
-  // Row 2 Women (array row 16)
-  ...createTable('WI', 16, 2, 3, 1),
-  ...createTable('WJ', 16, 6, 3, 1),
-  ...createTable('WK', 16, 10, 3, 1),
-  ...createTable('WL', 16, 14, 3, 1),
-  ...createTable('WM', 16, 18, 3, 1),
-  ...createTable('WN', 16, 22, 3, 1),
-  ...createTable('WO', 16, 26, 3, 1),
-  ...createTable('WP', 16, 30, 3, 1),
 ];
 
-export const MAX_ROWS = 18;
+export const MAX_ROWS = 16;
 export const MAX_COLS = 34;

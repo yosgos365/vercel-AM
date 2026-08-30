@@ -9,6 +9,12 @@ interface SeatStatus {
   status: "available" | "pending" | "taken";
 }
 
+interface BookingPolicy {
+  priorityWindow: boolean;
+  lastYearOccupiedSeats: string[];
+  effectiveDate: string;
+}
+
 export function SeatSelection() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [formData, setFormData] = useState({
@@ -23,9 +29,19 @@ export function SeatSelection() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [lastYearData, setLastYearData] = useState<{ found: boolean; name?: string; seats?: string[] } | null>(null);
+  const [bookingPolicy, setBookingPolicy] = useState<BookingPolicy | null>(null);
+  const [testDate, setTestDate] = useState("");
   const [showLastYearModal, setShowLastYearModal] = useState(false);
   const [lastYearModalPhase, setLastYearModalPhase] = useState<"identity" | "choice">("identity");
   const [lastYearChoice, setLastYearChoice] = useState<"same-seat" | "different-seats" | "not-confirmed">("not-confirmed");
+  const isTestMode = formData.phone.trim().toUpperCase() === "TRE";
+  const priorityAllowedSeatIds = bookingPolicy?.priorityWindow
+    ? new Set(
+      lastYearChoice !== "not-confirmed" && lastYearData?.found
+        ? lastYearData.seats || []
+        : SEATS.map((seat) => seat.id).filter((seatId) => !bookingPolicy.lastYearOccupiedSeats.includes(seatId)),
+    )
+    : null;
   
   useEffect(() => {
     fetch("/api/seats")
@@ -40,10 +56,15 @@ export function SeatSelection() {
       const res = await fetch("/api/check-last-year", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName: formData.firstName, lastName: formData.lastName }),
+        body: JSON.stringify({ firstName: formData.firstName, lastName: formData.lastName, phone: formData.phone, testDate: isTestMode ? testDate : undefined }),
       });
       const data = await res.json();
       setLastYearData(data);
+      setBookingPolicy({
+        priorityWindow: Boolean(data.priorityWindow),
+        lastYearOccupiedSeats: Array.isArray(data.lastYearOccupiedSeats) ? data.lastYearOccupiedSeats : [],
+        effectiveDate: data.effectiveDate || "",
+      });
       if (data.found && data.seats && data.seats.length > 0) {
         setLastYearModalPhase("identity");
         setShowLastYearModal(true);
@@ -90,6 +111,7 @@ export function SeatSelection() {
           lastYearIdentityConfirmed: lastYearChoice !== "not-confirmed",
           lastYearChoice,
           lastYearSeats: lastYearChoice === "not-confirmed" ? [] : lastYearData?.seats || [],
+          testDate: isTestMode ? testDate : undefined,
         }),
       });
       if (!response.ok) {
@@ -129,9 +151,15 @@ export function SeatSelection() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 onSubmit={handleDetailsSubmit}
-                className="space-y-6"
+                className="relative space-y-6"
               >
                 <h2 className="text-2xl font-semibold text-slate-800">פרטים אישיים</h2>
+                {isTestMode && (
+                  <div className="absolute top-4 left-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-right shadow-sm">
+                    <label className="block text-xs font-semibold text-amber-900">תאריך בדיקה</label>
+                    <input type="date" value={testDate} onChange={(event) => setTestDate(event.target.value)} className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 text-sm text-slate-800" />
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">שם פרטי</label>
@@ -189,6 +217,7 @@ export function SeatSelection() {
                   <div>
                     <h2 className="text-2xl font-semibold text-slate-800">בחירת מושבים</h2>
                     <p className="text-slate-500 mt-1">בחרו את המושבים הרצויים מהמפה.</p>
+                    {bookingPolicy?.priorityWindow && <p className="mt-2 text-sm font-medium text-amber-800">עד 6 בספטמבר 2026: {lastYearChoice !== "not-confirmed" && lastYearData?.found ? "אפשר לבחור רק את המושבים שבהם ישבת בשנה שעברה." : "אפשר לבחור רק מושבים שהיו פנויים בשנה שעברה."}</p>}
                   </div>
                   <div className="text-sm font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded-full">
                     נבחרו: {selectedSeats.length}
@@ -204,7 +233,7 @@ export function SeatSelection() {
                     }}
                   >
                     {/* Static Elements */}
-                    <div style={{ gridRow: '14 / 19', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
+                    <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0">
                     </div>
                     <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                       ארון קודש
@@ -217,7 +246,7 @@ export function SeatSelection() {
                     <div className="flex items-center justify-center text-lg font-bold text-slate-400 pointer-events-none tracking-widest z-0" style={{ gridRow: '3 / 13', gridColumn: '34', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                       עזרת גברים
                     </div>
-                    <div className="flex items-center justify-center text-lg font-bold text-slate-400 pointer-events-none tracking-widest z-0" style={{ gridRow: '15 / 18', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                    <div className="flex items-center justify-center text-lg font-bold text-slate-400 pointer-events-none tracking-widest z-0" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                       עזרת נשים
                     </div>
 
@@ -226,16 +255,19 @@ export function SeatSelection() {
                       const isTaken = status === "taken";
                       const isPending = status === "pending";
                       const isSelected = selectedSeats.includes(seat.id);
+                      const isUnavailableByPriority = Boolean(priorityAllowedSeatIds && !priorityAllowedSeatIds.has(seat.id));
                       
                       return (
                         <button
                           key={seat.id}
                           onClick={() => handleSeatClick(seat.id)}
-                          disabled={isTaken}
+                          disabled={isTaken || isUnavailableByPriority}
                           className={clsx(
                             "flex items-center justify-center text-xs font-medium rounded-full shadow-sm border transition-colors z-10 relative",
                             isTaken 
                               ? "bg-rose-200 text-rose-900 border-rose-500 ring-1 ring-rose-300 cursor-not-allowed" 
+                              : isUnavailableByPriority
+                                ? "bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed"
                               : isSelected
                                 ? "bg-indigo-600 text-white border-indigo-700 transform scale-105 shadow-md"
                                 : isPending
