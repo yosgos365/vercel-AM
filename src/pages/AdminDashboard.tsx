@@ -475,16 +475,36 @@ export function AdminDashboard() {
     })
     .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
   const viewedRequest = viewRequestSeats?.reqId ? allRequests.find(request => request.id === viewRequestSeats.reqId) : undefined;
-  const lastYearNames: Array<{ firstName: string; lastName: string; seats: string[] }> = Array.from<{ firstName: string; lastName: string; seats: string[] }>(lastYearTable.reduce<Map<string, { firstName: string; lastName: string; seats: string[] }>>((rows, row) => {
+  const lastYearNames: Array<{ key: string; firstName: string; lastName: string; seats: string[] }> = Array.from<{ key: string; firstName: string; lastName: string; seats: string[] }>(lastYearTable.reduce<Map<string, { key: string; firstName: string; lastName: string; seats: string[] }>>((rows, row) => {
     const firstName = row.firstName.trim();
     const lastName = row.lastName.trim();
     if (!firstName && !lastName) return rows;
     const key = `${firstName}\u0000${lastName}`;
-    const current = rows.get(key) || { firstName, lastName, seats: [] as string[] };
+    const current = rows.get(key) || { key, firstName, lastName, seats: [] as string[] };
     current.seats.push(row.id);
     rows.set(key, current);
     return rows;
-  }, new Map<string, { firstName: string; lastName: string; seats: string[] }>()).values());
+  }, new Map<string, { key: string; firstName: string; lastName: string; seats: string[] }>()).values());
+  const updateLastYearName = (key: string, field: "firstName" | "lastName", value: string) => {
+    setLastYearTable(current => current.map(row => `${row.firstName.trim()}\u0000${row.lastName.trim()}` === key ? { ...row, [field]: value } : row));
+  };
+  const updateLastYearNameSeats = (key: string, value: string) => {
+    const seatIds = value.split(/[\s,]+/).map(seat => seat.trim().toUpperCase()).filter(Boolean);
+    const validSeatIds = new Set(SEATS.map(seat => seat.id));
+    const invalidSeat = seatIds.find(seat => !validSeatIds.has(seat));
+    if (invalidSeat) {
+      setLastYearTableMessage(`המושב ${invalidSeat} אינו קיים במפה.`);
+      return;
+    }
+    const [firstName, lastName] = key.split("\u0000");
+    const selectedSeats = new Set(seatIds);
+    setLastYearTable(current => current.map(row => {
+      const belongsToCurrentName = `${row.firstName.trim()}\u0000${row.lastName.trim()}` === key;
+      if (selectedSeats.has(row.id)) return { ...row, firstName, lastName };
+      return belongsToCurrentName ? { ...row, firstName: "", lastName: "" } : row;
+    }));
+    setLastYearTableMessage("");
+  };
 
 
   return (
@@ -1403,10 +1423,14 @@ export function AdminDashboard() {
                       <td className="p-2"><input value={row.lastName} onChange={event => setLastYearTable(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, lastName: event.target.value } : item))} placeholder="שם משפחה" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
                     </tr>)}
                   </tbody>
-                </table> : <table className="w-full min-w-[600px] text-sm text-right">
+                </table> : <table className="w-full min-w-[720px] text-sm text-right">
                   <thead className="sticky top-0 bg-slate-50 text-slate-600 border-b border-slate-200"><tr><th className="p-3 font-medium">שם פרטי</th><th className="p-3 font-medium">שם משפחה</th><th className="p-3 font-medium">מושבים</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {lastYearNames.length ? lastYearNames.map((row, index) => <tr key={`${row.firstName}-${row.lastName}-${index}`}><td className="p-3 text-slate-800">{row.firstName || "—"}</td><td className="p-3 text-slate-800">{row.lastName || "—"}</td><td className="p-3 font-mono text-slate-700" dir="ltr">{row.seats.join(", ")}</td></tr>) : <tr><td colSpan={3} className="p-8 text-center text-slate-500">אין שיבוצים שמורים</td></tr>}
+                    {lastYearNames.length ? lastYearNames.map(row => <tr key={row.key}>
+                      <td className="p-2"><input value={row.firstName} onChange={event => updateLastYearName(row.key, "firstName", event.target.value)} placeholder="שם פרטי" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
+                      <td className="p-2"><input value={row.lastName} onChange={event => updateLastYearName(row.key, "lastName", event.target.value)} placeholder="שם משפחה" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
+                      <td className="p-2"><input defaultValue={row.seats.join(", ")} onBlur={event => updateLastYearNameSeats(row.key, event.target.value)} placeholder="לדוגמה: A1, A2" dir="ltr" className="w-full rounded-md border border-slate-300 px-3 py-2 text-left font-mono uppercase outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
+                    </tr>) : <tr><td colSpan={3} className="p-8 text-center text-slate-500">אין שיבוצים שמורים</td></tr>}
                   </tbody>
                 </table>}
               </div>

@@ -24,7 +24,7 @@ const SEAT_PRICE = 150;
 const SEAT_IDS = new Set(SEATS.map((seat) => seat.id));
 const PRIORITY_BOOKING_END = "2026-09-06";
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "213223";
-const DEVELOPER_SESSION_MS = 15 * 60 * 1000;
+const DEVELOPER_SESSION_MS = 8 * 60 * 60 * 1000;
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
@@ -778,26 +778,31 @@ app.post("/api/admin/last-year/seat/:seatId", adminAuth, async (req, res) => {
 // Developer-only bulk editor for the historical seating list. This is the
 // same data source used by the map and by the public identity question.
 app.post("/api/admin/developer/last-year-users", developerAuth, async (req, res) => {
-  const users = req.body?.users;
-  if (!Array.isArray(users)) return res.status(400).json({ error: "רשימת השיבוצים אינה תקינה" });
-  const occupiedSeats = new Set<string>();
-  const nextUsers: DBState["lastYearUsers"] = [];
-  for (const item of users) {
-    const name = typeof item?.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
-    const seats = Array.isArray(item?.seats) ? item.seats.filter((seat: unknown): seat is string => typeof seat === "string" && SEAT_IDS.has(seat)) : [];
-    if (!name && !seats.length) continue;
-    if (!name || !seats.length || new Set(seats).size !== seats.length || seats.some(seat => occupiedSeats.has(seat))) {
-      return res.status(400).json({ error: "לכל שם יש להזין מושב אחד לפחות, וכל מושב יכול להופיע פעם אחת בלבד" });
+  try {
+    const users = req.body?.users;
+    if (!Array.isArray(users)) return res.status(400).json({ error: "רשימת השיבוצים אינה תקינה" });
+    const occupiedSeats = new Set<string>();
+    const nextUsers: DBState["lastYearUsers"] = [];
+    for (const item of users) {
+      const name = typeof item?.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
+      const seats = Array.isArray(item?.seats) ? item.seats.filter((seat: unknown): seat is string => typeof seat === "string" && SEAT_IDS.has(seat)) : [];
+      if (!name && !seats.length) continue;
+      if (!name || !seats.length || new Set(seats).size !== seats.length || seats.some(seat => occupiedSeats.has(seat))) {
+        return res.status(400).json({ error: "לכל שם יש להזין מושב אחד לפחות, וכל מושב יכול להופיע פעם אחת בלבד" });
+      }
+      seats.forEach(seat => occupiedSeats.add(seat));
+      const [firstName, ...lastNameParts] = name.split(" ");
+      nextUsers.push({ id: `last-year-${nextUsers.length}-${Date.now()}`, firstName: lastNameParts.length ? firstName : "", lastName: lastNameParts.length ? lastNameParts.join(" ") : firstName, seats });
     }
-    seats.forEach(seat => occupiedSeats.add(seat));
-    const [firstName, ...lastNameParts] = name.split(" ");
-    nextUsers.push({ id: `last-year-${nextUsers.length}-${Date.now()}`, firstName: lastNameParts.length ? firstName : "", lastName: lastNameParts.length ? lastNameParts.join(" ") : firstName, seats });
+    const db = await readDB();
+    db.lastYearUsers = nextUsers;
+    await writeDB(db);
+    addSeatAudit("רשימת תשפ״ו נערכה", { actor: "מפתח", details: `${nextUsers.length} רשומות עודכנו` });
+    res.json({ success: true, count: nextUsers.length });
+  } catch (error) {
+    console.error("שמירת רשימת תשפ״ו נכשלה", error);
+    res.status(500).json({ error: "השמירה במסד הנתונים נכשלה. נסה שוב בעוד רגע." });
   }
-  const db = await readDB();
-  db.lastYearUsers = nextUsers;
-  await writeDB(db);
-  addSeatAudit("רשימת תשפ״ו נערכה", { actor: "מפתח", details: `${nextUsers.length} רשומות עודכנו` });
-  res.json({ success: true, count: nextUsers.length });
 });
 
 // Admin update specific seat (manual override)
