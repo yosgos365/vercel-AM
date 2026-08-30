@@ -828,7 +828,7 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-indigo-50/80 border border-indigo-200/50 flex items-center justify-center text-base font-bold text-indigo-800 shadow-sm pointer-events-none z-20">
                   בימה
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -894,7 +894,7 @@ export function AdminDashboard() {
                   ארון קודש
                 </div>
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-indigo-50/80 border border-indigo-200/50 flex items-center justify-center text-base font-bold text-indigo-800 shadow-sm pointer-events-none z-20">בימה</div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -939,7 +939,7 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-50 border border-slate-200 pointer-events-none" />
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-slate-100 border border-slate-400 flex items-center justify-center text-base font-bold text-slate-800 pointer-events-none">ארון קודש</div>
                 <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: '184px', justifySelf: 'start' }} className="bg-slate-50 border border-slate-400 flex items-center justify-center text-base font-bold text-slate-800 pointer-events-none">בימה</div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-600 tracking-widest pointer-events-none" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
                 {SEATS.map(seat => {
                   const seatData = data.seats[seat.id];
                   const owner = seatData?.status === "taken" ? seatData.owner?.trim() : "";
@@ -1032,7 +1032,7 @@ export function AdminDashboard() {
                 <div className="inline-grid gap-1.5 mx-auto p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm relative" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 38px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 26px)` }}>
                   <div style={{ gridRow: '14 / 17', gridColumn: '1 / 35' }} className="rounded-3xl w-full h-full bg-slate-100/60 border border-slate-200/60 pointer-events-none z-0" />
                   <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">ארון קודש</div>
-                  <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
+                  <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>עזרת נשים</div>
                   {SEATS.map(seat => {
                     const isSelected = reassignmentSeats.includes(seat.id);
                     const seatData = data.seats[seat.id];
@@ -1120,7 +1120,7 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 
@@ -1271,7 +1271,7 @@ export function AdminDashboard() {
                 <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm pointer-events-none z-0">
                   ארון קודש
                 </div>
-                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest z-0 pointer-events-none" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                   עזרת נשים
                 </div>
 

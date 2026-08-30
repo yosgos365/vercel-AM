@@ -280,7 +280,7 @@ export function SeatSelection() {
                       בימה
                     </div>
                     
-                    <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest pointer-events-none z-0" style={{ gridRow: '15 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                    <div className="flex items-center justify-center text-lg font-bold text-slate-400 tracking-widest pointer-events-none z-0" style={{ gridRow: '14 / 17', gridColumn: '1', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                       עזרת נשים
                     </div>
 
