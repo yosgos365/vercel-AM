@@ -17,8 +17,10 @@
 
 - `USE_FIRESTORE=true`
 - `FIREBASE_SERVICE_ACCOUNT_JSON` — תוכן קובץ מפתח השירות של Firebase, כולו בשורה אחת
-- `DRIVE_PAYMENT_FOLDER_ID` — רק אם ממשיכים להשתמש בהעלאה ל־Google Drive
 - `DEVELOPER_PASSWORD` — סיסמת המפתח הרצויה
+
+צילומי התשלום נשמרים ב־Firebase Storage הפרטי של הפרויקט. אין צורך
+ב־Google Drive או ב־Google Apps Script.
 
 הפונקציה `api/[...path].ts` מטפלת בכל כתובות `/api/*`. קובץ `vercel.json`
 מחזיר את שאר הכתובות ל־React, כך שפתיחה ישירה של `/select` או
