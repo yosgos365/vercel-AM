@@ -285,7 +285,10 @@ export function AdminDashboard() {
         setLastYearTableMessage(result?.error || "שמירת הרשימה נכשלה. נסה שוב.");
         return;
       }
-      setShowLastYearTable(false);
+      // Keep the editor open after a successful save.  Closing it made it look
+      // as though the button had not saved anything, and forced the developer
+      // to reopen the table for every small adjustment.
+      setLastYearTableMessage(`נשמר בהצלחה: ${result.count} שיבוצים עודכנו במפה ובזיהוי הלקוחות.`);
       setDeveloperMessage(`נשמרו ${result.count} רשומות של תשפ״ו.`);
       await loadData();
     } catch {
@@ -479,14 +482,18 @@ export function AdminDashboard() {
     const firstName = row.firstName.trim();
     const lastName = row.lastName.trim();
     if (!firstName && !lastName) return rows;
-    const key = `${firstName}\u0000${lastName}`;
-    const current = rows.get(key) || { key, firstName, lastName, seats: [] as string[] };
+    // The visible name is editable.  It must not also be the React key: when
+    // it changed on every keystroke React recreated the row and the input lost
+    // focus.  Collect by name first, then assign a stable key from its seats.
+    const nameKey = `${firstName}\u0000${lastName}`;
+    const current = rows.get(nameKey) || { key: "", firstName, lastName, seats: [] as string[] };
     current.seats.push(row.id);
-    rows.set(key, current);
+    rows.set(nameKey, current);
     return rows;
-  }, new Map<string, { key: string; firstName: string; lastName: string; seats: string[] }>()).values());
+  }, new Map<string, { key: string; firstName: string; lastName: string; seats: string[] }>()).values()).map(row => ({ ...row, key: [...row.seats].sort().join("\u0000") }));
   const updateLastYearName = (key: string, field: "firstName" | "lastName", value: string) => {
-    setLastYearTable(current => current.map(row => `${row.firstName.trim()}\u0000${row.lastName.trim()}` === key ? { ...row, [field]: value } : row));
+    const targetSeats = new Set(key.split("\u0000"));
+    setLastYearTable(current => current.map(row => targetSeats.has(row.id) ? { ...row, [field]: value } : row));
   };
   const updateLastYearNameSeats = (key: string, value: string) => {
     const seatIds = value.split(/[\s,]+/).map(seat => seat.trim().toUpperCase()).filter(Boolean);
@@ -496,11 +503,12 @@ export function AdminDashboard() {
       setLastYearTableMessage(`המושב ${invalidSeat} אינו קיים במפה.`);
       return;
     }
-    const [firstName, lastName] = key.split("\u0000");
+    const targetSeats = new Set(key.split("\u0000"));
     const selectedSeats = new Set(seatIds);
     setLastYearTable(current => current.map(row => {
-      const belongsToCurrentName = `${row.firstName.trim()}\u0000${row.lastName.trim()}` === key;
-      if (selectedSeats.has(row.id)) return { ...row, firstName, lastName };
+      const belongsToCurrentName = targetSeats.has(row.id);
+      const sourceRow = current.find(item => targetSeats.has(item.id));
+      if (selectedSeats.has(row.id)) return { ...row, firstName: sourceRow?.firstName || "", lastName: sourceRow?.lastName || "" };
       return belongsToCurrentName ? { ...row, firstName: "", lastName: "" } : row;
     }));
     setLastYearTableMessage("");
@@ -1435,7 +1443,7 @@ export function AdminDashboard() {
                 </table>}
               </div>
               <div className="flex flex-col-reverse sm:flex-row gap-3 shrink-0">
-                {lastYearTableMessage && <p className="sm:self-center text-sm text-slate-600">{lastYearTableMessage}</p>}
+                {lastYearTableMessage && <p role="status" className={clsx("sm:self-center text-sm font-medium", lastYearTableMessage.startsWith("נשמר בהצלחה") ? "text-emerald-700" : "text-slate-600")}>{lastYearTableMessage}</p>}
                 <div className="flex-1" />
                 <button onClick={() => setShowLastYearTable(false)} className="sm:w-auto bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-5 py-2 rounded-lg">ביטול</button>
                 <button onClick={() => void saveLastYearTable()} disabled={savingLastYearTable} className="sm:w-auto bg-teal-700 hover:bg-teal-800 text-white font-semibold px-5 py-2 rounded-lg disabled:opacity-60">{savingLastYearTable ? "שומר..." : "שמור שינויים"}</button>
