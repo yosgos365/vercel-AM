@@ -80,7 +80,8 @@ export function AdminDashboard() {
   const [developerMessage, setDeveloperMessage] = useState("");
   const [backups, setBackups] = useState<BackupSummary[]>([]);
   const [showLastYearTable, setShowLastYearTable] = useState(false);
-  const [lastYearTable, setLastYearTable] = useState<Array<{ id: string; name: string; seats: string }>>([]);
+  const [lastYearTableView, setLastYearTableView] = useState<"seats" | "names">("seats");
+  const [lastYearTable, setLastYearTable] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
   const [developerToken, setDeveloperToken] = useState(() => localStorage.getItem("synagogue-developer-token") || "");
   const [developerDeviceId] = useState(() => {
     const existing = localStorage.getItem("synagogue-developer-device");
@@ -244,17 +245,18 @@ export function AdminDashboard() {
       const user = data.lastYearUsers.find(item => item.seats.includes(seat.id));
       return {
         id: seat.id,
-        name: user ? [user.firstName, user.lastName].filter(Boolean).join(" ") : "",
-        seats: seat.id,
+        firstName: user?.firstName || "",
+        lastName: user?.lastName || "",
       };
     }));
     setDeveloperMessage("");
+    setLastYearTableView("seats");
     setShowLastYearTable(true);
   };
   const saveLastYearTable = async () => {
     const groupedSeats = new Map<string, string[]>();
     for (const row of lastYearTable) {
-      const name = row.name.trim().replace(/\s+/g, " ");
+      const name = [row.firstName, row.lastName].map(value => value.trim().replace(/\s+/g, " ")).filter(Boolean).join(" ");
       if (!name) continue;
       groupedSeats.set(name, [...(groupedSeats.get(name) || []), row.id]);
     }
@@ -455,6 +457,16 @@ export function AdminDashboard() {
     })
     .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
   const viewedRequest = viewRequestSeats?.reqId ? allRequests.find(request => request.id === viewRequestSeats.reqId) : undefined;
+  const lastYearNames: Array<{ firstName: string; lastName: string; seats: string[] }> = Array.from<{ firstName: string; lastName: string; seats: string[] }>(lastYearTable.reduce<Map<string, { firstName: string; lastName: string; seats: string[] }>>((rows, row) => {
+    const firstName = row.firstName.trim();
+    const lastName = row.lastName.trim();
+    if (!firstName && !lastName) return rows;
+    const key = `${firstName}\u0000${lastName}`;
+    const current = rows.get(key) || { firstName, lastName, seats: [] as string[] };
+    current.seats.push(row.id);
+    rows.set(key, current);
+    return rows;
+  }, new Map<string, { firstName: string; lastName: string; seats: string[] }>()).values());
 
 
   return (
@@ -1359,16 +1371,26 @@ export function AdminDashboard() {
                 <div><h3 className="text-xl font-bold text-slate-800">רשימת שיבוץ תשפ״ו</h3><p className="text-sm text-slate-500 mt-1">כל מושב מופיע בשורה משלו. השארת השם ריק מסמנת מושב פנוי ומעדכנת את המפה ואת זיהוי הלקוחות.</p></div>
                 <button onClick={() => setShowLastYearTable(false)} className="text-slate-500 hover:text-slate-800 font-medium">סגירה</button>
               </div>
+              <div className="flex gap-2 shrink-0 border-b border-slate-200">
+                <button onClick={() => setLastYearTableView("seats")} className={clsx("px-4 py-2 text-sm font-semibold border-b-2", lastYearTableView === "seats" ? "border-teal-700 text-teal-800" : "border-transparent text-slate-500 hover:text-slate-800")}>לפי מושבים</button>
+                <button onClick={() => setLastYearTableView("names")} className={clsx("px-4 py-2 text-sm font-semibold border-b-2", lastYearTableView === "names" ? "border-teal-700 text-teal-800" : "border-transparent text-slate-500 hover:text-slate-800")}>לפי שמות</button>
+              </div>
               <div className="overflow-auto border border-slate-200 rounded-lg">
-                <table className="w-full min-w-[500px] text-sm text-right">
-                  <thead className="sticky top-0 bg-slate-50 text-slate-600 border-b border-slate-200"><tr><th className="p-3 font-medium w-36">מושב</th><th className="p-3 font-medium">שם</th></tr></thead>
+                {lastYearTableView === "seats" ? <table className="w-full min-w-[640px] text-sm text-right">
+                  <thead className="sticky top-0 bg-slate-50 text-slate-600 border-b border-slate-200"><tr><th className="p-3 font-medium w-28">מושב</th><th className="p-3 font-medium">שם פרטי</th><th className="p-3 font-medium">שם משפחה</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {lastYearTable.map((row, index) => <tr key={row.id}>
+                    {lastYearTable.map((row, index) => <tr key={row.id} className={!row.firstName && !row.lastName ? "bg-slate-50/70" : undefined}>
                       <td className="p-3 font-mono font-semibold text-slate-700" dir="ltr">{row.id}</td>
-                      <td className="p-2"><input value={row.name} onChange={event => setLastYearTable(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder="מושב ריק" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
+                      <td className="p-2"><input value={row.firstName} onChange={event => setLastYearTable(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, firstName: event.target.value } : item))} placeholder={!row.firstName && !row.lastName ? "מושב ריק" : "שם פרטי"} className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
+                      <td className="p-2"><input value={row.lastName} onChange={event => setLastYearTable(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, lastName: event.target.value } : item))} placeholder="שם משפחה" className="w-full rounded-md border border-slate-300 px-3 py-2 outline-none placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></td>
                     </tr>)}
                   </tbody>
-                </table>
+                </table> : <table className="w-full min-w-[600px] text-sm text-right">
+                  <thead className="sticky top-0 bg-slate-50 text-slate-600 border-b border-slate-200"><tr><th className="p-3 font-medium">שם פרטי</th><th className="p-3 font-medium">שם משפחה</th><th className="p-3 font-medium">מושבים</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {lastYearNames.length ? lastYearNames.map((row, index) => <tr key={`${row.firstName}-${row.lastName}-${index}`}><td className="p-3 text-slate-800">{row.firstName || "—"}</td><td className="p-3 text-slate-800">{row.lastName || "—"}</td><td className="p-3 font-mono text-slate-700" dir="ltr">{row.seats.join(", ")}</td></tr>) : <tr><td colSpan={3} className="p-8 text-center text-slate-500">אין שיבוצים שמורים</td></tr>}
+                  </tbody>
+                </table>}
               </div>
               <div className="flex flex-col-reverse sm:flex-row gap-3 shrink-0">
                 <div className="flex-1" />
