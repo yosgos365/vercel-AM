@@ -598,6 +598,19 @@ export function attemptLogin(password: string, ip: string) {
   return { success: true, token };
 }
 
+// Used only after the server has independently verified the developer secret.
+// It deliberately shares the normal admin-session format, so the developer
+// can still access the dashboard after the administrator changes their own
+// password.
+export function createDeveloperAdminSession() {
+  const now = Date.now();
+  if (useFirestore()) return createProductionSession(now + SESSION_DURATION_MS);
+  const token = crypto.randomBytes(32).toString("base64url");
+  db.prepare("INSERT INTO sessions (token_hash, expires_at) VALUES (?, ?)")
+    .run(crypto.createHash("sha256").update(token).digest("hex"), now + SESSION_DURATION_MS);
+  return token;
+}
+
 export function isValidSession(token?: string) {
   if (!token) return false;
   const now = Date.now();

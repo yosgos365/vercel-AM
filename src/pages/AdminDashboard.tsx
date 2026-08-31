@@ -1,10 +1,10 @@
 import React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "../store";
 import { SEATS, MAX_ROWS, MAX_COLS } from "../MapData";
 import { clsx } from "clsx";
 import { useNavigate } from "react-router-dom";
-import { Users, UserCheck, AlertTriangle, Eye, Trash2, Key, Settings, LogOut, X, Printer, Table2, Download, History, Search } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, Eye, Key, Settings, LogOut, X, Printer, Table2, Download, History, Search } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface Request {
@@ -114,18 +114,10 @@ export function AdminDashboard() {
   const [passMsg, setPassMsg] = useState("");
   const paymentImageUrl = (url: string) => url.startsWith("/api/payment-images/") ? `${url}?token=${encodeURIComponent(adminToken)}` : url;
   
-  // State for Long Press (Delete)
-  const [longPressId, setLongPressId] = useState<string | null>(null);
-  let pressTimer: any;
-
-  const handlePressStart = (id: string) => {
-    pressTimer = setTimeout(() => {
-      setLongPressId(id);
-    }, 800);
-  };
-  const handlePressEnd = () => {
-    clearTimeout(pressTimer);
-  };
+  // Deletion is deliberately available only while the hidden developer mode
+  // is unlocked. Four clicks on one request open the confirmation dialog.
+  const [developerDeleteRequest, setDeveloperDeleteRequest] = useState<Request | null>(null);
+  const developerRequestTapRef = useRef<{ id: string; count: number; timestamp: number }>({ id: "", count: 0, timestamp: 0 });
 
   const loadData = async () => {
     try {
@@ -188,15 +180,27 @@ export function AdminDashboard() {
       headers: { "Authorization": `Bearer ${adminToken}` }
     });
     if (!res.ok) { setActionError((await res.json().catch(() => null))?.error || "מחיקת הבקשה נכשלה"); return; }
-    setLongPressId(null);
+    setDeveloperDeleteRequest(null);
     loadData();
+  };
+
+  const handleDeveloperRequestTap = (request: Request) => {
+    if (!developerToken) return;
+    const now = Date.now();
+    const current = developerRequestTapRef.current;
+    const count = current.id === request.id && now - current.timestamp < 3_000 ? current.count + 1 : 1;
+    developerRequestTapRef.current = { id: request.id, count, timestamp: now };
+    if (count >= 4) {
+      developerRequestTapRef.current = { id: "", count: 0, timestamp: 0 };
+      setDeveloperDeleteRequest(request);
+    }
   };
 
   const developerHeaders = () => ({ "X-Developer-Token": developerToken, "X-Developer-Device": developerDeviceId });
   const unlockDeveloper = async (event: React.FormEvent) => {
     event.preventDefault();
     setDeveloperMessage("בודק סיסמת מפתח...");
-    const response = await fetch("/api/admin/developer/unlock", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${adminToken}` }, body: JSON.stringify({ password: developerPassword, deviceId: developerDeviceId }) });
+    const response = await fetch("/api/admin/developer/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: developerPassword, deviceId: developerDeviceId }) });
     const result = await response.json().catch(() => null);
     if (!response.ok) { setDeveloperMessage(result?.error || "לא ניתן לפתוח את מצב המפתח."); return; }
     localStorage.setItem("synagogue-developer-token", result.token);
@@ -610,34 +614,7 @@ export function AdminDashboard() {
                 <div 
                   key={req.id} 
                   className="border border-slate-200 rounded-lg p-4 relative"
-                  onMouseDown={() => handlePressStart(req.id)}
-                  onMouseUp={handlePressEnd}
-                  onMouseLeave={handlePressEnd}
-                  onTouchStart={() => handlePressStart(req.id)}
-                  onTouchEnd={handlePressEnd}
                 >
-                  {/* Delete Overlay */}
-                  <AnimatePresence>
-                    {longPressId === req.id && (
-                      <motion.div 
-                        initial={{ opacity: 0 }} 
-                        animate={{ opacity: 1 }} 
-                        exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-red-50/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg border border-red-200"
-                      >
-                        <p className="font-medium text-red-800 mb-4">האם למחוק בקשה זו?</p>
-                        <div className="flex gap-2">
-                          <button onClick={() => deleteRequest(req.id)} className="bg-red-600 text-white px-4 py-2 shadow flex items-center gap-2 text-sm font-medium hover:bg-red-700">
-                            <Trash2 className="w-4 h-4" /> מחק והתפנה מושבים
-                          </button>
-                          <button onClick={() => setLongPressId(null)} className="bg-white text-slate-700 px-4 py-2 shadow text-sm font-medium hover:bg-slate-50">
-                            ביטול
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h3 className="font-semibold text-lg flex items-center gap-2">
@@ -731,7 +708,7 @@ export function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sortedAllRequests.map(req => (
-                    <tr key={req.id} className="hover:bg-slate-50/70">
+                    <tr key={req.id} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a")) handleDeveloperRequestTap(req); }} className={clsx("hover:bg-slate-50/70", developerToken && "cursor-default")}>
                       <td className="p-3 text-slate-800 font-medium"><div>{req.firstName} {req.lastName}{req.isDemo && <span className="mr-2 inline-flex rounded-full bg-violet-100 text-violet-800 px-2 py-0.5 text-[10px] font-semibold">דמה</span>}</div><div className="mt-1 text-xs font-normal text-slate-500">נשלחה: {req.timestamp ? new Date(req.timestamp).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" }) : "לא ידוע"}</div></td>
                       <td className="p-3 text-slate-800" dir="ltr">{req.phone}</td>
                       <td className="p-3 whitespace-nowrap text-xs text-slate-600">{req.timestamp ? new Date(req.timestamp).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
@@ -1102,14 +1079,13 @@ export function AdminDashboard() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {false && activeTab === "allRequests" && longPressId && (() => {
-          const request = allRequests.find(item => item.id === longPressId);
-          if (!request) return null;
+        {developerDeleteRequest && (() => {
+          const request = developerDeleteRequest;
           return <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-5">
               <h3 className="text-xl font-bold text-slate-800">מחיקת בקשה</h3>
               <p className="text-slate-600">למחוק את הבקשה של <strong>{request.firstName} {request.lastName}</strong>? פעולה זו תשחרר את המושבים שבבקשה, אם הם עדיין שייכים לה.</p>
-              <div className="flex gap-3"><button onClick={() => { setLongPressId(null); deleteRequest(request.id); }} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-lg">מחק בקשה</button><button onClick={() => setLongPressId(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg">ביטול</button></div>
+              <div className="flex gap-3"><button onClick={() => void deleteRequest(request.id)} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2.5 rounded-lg">מחק בקשה</button><button onClick={() => setDeveloperDeleteRequest(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg">ביטול</button></div>
             </motion.div>
           </div>;
         })()}

@@ -41,6 +41,7 @@ export function SeatSelection() {
   const [lastYearChoice, setLastYearChoice] = useState<"same-seat" | "different-seats" | "not-confirmed">("not-confirmed");
   const [draftRestored, setDraftRestored] = useState(false);
   const lastYearSeatFocusRef = useRef<string>("");
+  const lastYearModalFocusRef = useRef<HTMLDivElement | null>(null);
   const totalAmount = selectedSeats.length * SEAT_PRICE;
   const recognizedSeatIds = lastYearChoice !== "not-confirmed" && lastYearData?.found ? lastYearData.seats || [] : [];
   const recognizedSeats = SEATS.filter(seat => recognizedSeatIds.includes(seat.id));
@@ -102,6 +103,16 @@ export function SeatSelection() {
     }, 180);
     return () => window.clearTimeout(timer);
   }, [firstRecognizedSeat, step]);
+
+  useEffect(() => {
+    if (!showLastYearModal || lastYearModalPhase !== "identity" || !lastYearData?.seats?.[0]) return;
+    const timer = window.setTimeout(() => {
+      lastYearModalFocusRef.current
+        ?.querySelector<HTMLElement>(`#last-year-modal-seat-${lastYearData.seats![0]}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [lastYearData?.seats, lastYearModalPhase, showLastYearModal]);
 
   const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -368,7 +379,7 @@ export function SeatSelection() {
                               : isSelected
                                 ? "bg-indigo-600 text-white border-indigo-700 transform scale-105 shadow-md"
                                 : recognizedSeatIds.includes(seat.id)
-                                  ? "bg-indigo-100 text-indigo-900 border-indigo-600 ring-2 ring-indigo-300 shadow-md hover:bg-indigo-200"
+                                  ? "bg-indigo-700 text-white border-indigo-900 ring-4 ring-indigo-200 scale-110 shadow-lg hover:bg-indigo-800"
                                 : isPending
                                   ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
                                   : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
@@ -518,9 +529,9 @@ export function SeatSelection() {
               {lastYearModalPhase === "identity" ? <>
                 <h3 className="text-xl font-semibold text-slate-800">זיהוי שיבוץ משנה שעברה</h3>
                 <p className="text-slate-600">ברשומות השיבוץ של תשפ״ו מופיע כי <strong>{lastYearData?.name}</strong> שובץ {lastYearData?.seats?.length === 1 ? "בכיסא" : "בכיסאות"} <strong>{lastYearData?.seats?.join(", ")}</strong>. האם מדובר בך?</p>
-                <div className="overflow-x-auto" dir="ltr"><div className="inline-grid gap-1 p-3 bg-slate-50 border rounded-xl" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 20px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 18px)` }}>
+                <div ref={lastYearModalFocusRef} className="overflow-auto max-h-72" dir="ltr"><div className="inline-grid gap-1 p-3 bg-slate-50 border rounded-xl" style={{ gridTemplateColumns: `repeat(${MAX_COLS}, 20px)`, gridTemplateRows: `repeat(${MAX_ROWS}, 18px)` }}>
                   <div style={{ gridRow: "1 / 2", gridColumn: "14 / 18" }} className="bg-indigo-100 border text-[7px] flex items-center justify-center">ארון קודש</div><div style={{ gridRow: "5 / 8", gridColumn: "14 / 18" }} className="bg-indigo-50 border text-[7px] flex items-center justify-center">בימה</div>
-                  {SEATS.map(seat => <div key={seat.id} style={{ gridRow: seat.row + 1, gridColumn: seat.col + 1 }} className={clsx("rounded-sm border text-[7px] flex items-center justify-center", lastYearData?.seats?.includes(seat.id) ? "bg-indigo-600 text-white border-indigo-800 ring-1 ring-indigo-300" : "bg-white text-slate-400 border-slate-200")}>{seat.label}</div>)}
+                  {SEATS.map(seat => <div id={`last-year-modal-seat-${seat.id}`} key={seat.id} style={{ gridRow: seat.row + 1, gridColumn: seat.col + 1 }} className={clsx("rounded-sm border text-[7px] flex items-center justify-center", lastYearData?.seats?.includes(seat.id) ? "bg-indigo-700 text-white border-indigo-900 ring-2 ring-indigo-300 scale-110" : "bg-white text-slate-400 border-slate-200")}>{seat.label}</div>)}
                 </div></div>
                 <div className="flex gap-3 pt-2"><button onClick={() => { setLastYearData(null); setLastYearChoice("not-confirmed"); setShowLastYearModal(false); setStep(2); }} className="flex-1 bg-stone-100 hover:bg-stone-200 text-slate-700 font-medium py-2 rounded-lg">לא, זה לא אני</button><button onClick={() => setLastYearModalPhase("choice")} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded-lg">כן, זה אני</button></div>
               </> : <>
