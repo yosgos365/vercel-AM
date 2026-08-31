@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SEATS, MAX_ROWS, MAX_COLS } from "../MapData";
 import { clsx } from "clsx";
 import { Upload, CheckCircle2, AlertCircle } from "lucide-react";
@@ -18,6 +18,7 @@ interface BookingPolicy {
 const SEAT_PRICE = 150;
 const MAX_PAYMENT_IMAGE_BYTES = 1_000_000;
 const MAX_PAYMENT_IMAGE_DIMENSION = 2000;
+const PURCHASE_DRAFT_KEY = "ahavat-menachem-seat-purchase-draft";
 
 export function SeatSelection() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -38,7 +39,12 @@ export function SeatSelection() {
   const [showLastYearModal, setShowLastYearModal] = useState(false);
   const [lastYearModalPhase, setLastYearModalPhase] = useState<"identity" | "choice">("identity");
   const [lastYearChoice, setLastYearChoice] = useState<"same-seat" | "different-seats" | "not-confirmed">("not-confirmed");
+  const [draftRestored, setDraftRestored] = useState(false);
+  const lastYearSeatFocusRef = useRef<string>("");
   const totalAmount = selectedSeats.length * SEAT_PRICE;
+  const recognizedSeatIds = lastYearChoice !== "not-confirmed" && lastYearData?.found ? lastYearData.seats || [] : [];
+  const recognizedSeats = SEATS.filter(seat => recognizedSeatIds.includes(seat.id));
+  const firstRecognizedSeat = recognizedSeats[0];
   const priorityAllowedSeatIds = bookingPolicy?.priorityWindow
     ? new Set(
       lastYearChoice !== "not-confirmed" && lastYearData?.found
@@ -55,6 +61,47 @@ export function SeatSelection() {
       .then((res) => res.json())
       .then((data) => setSeatStatuses(data));
   }, []);
+
+  // A PayBox payment opens outside this page.  Keep the customer's details and
+  // seat choice in this browser tab even if the page is refreshed on return.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(PURCHASE_DRAFT_KEY);
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft && draft.step && draft.step < 4) {
+          setStep(draft.step);
+          setFormData(draft.formData || { firstName: "", lastName: "", phone: "" });
+          setSelectedSeats(Array.isArray(draft.selectedSeats) ? draft.selectedSeats : []);
+          setLastYearData(draft.lastYearData || null);
+          setBookingPolicy(draft.bookingPolicy || null);
+          setLastYearChoice(draft.lastYearChoice || "not-confirmed");
+        }
+      }
+    } catch {
+      // A blocked browser storage must never prevent submitting a request.
+    } finally {
+      setDraftRestored(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftRestored || step === 4) return;
+    try {
+      sessionStorage.setItem(PURCHASE_DRAFT_KEY, JSON.stringify({ step, formData, selectedSeats, lastYearData, bookingPolicy, lastYearChoice }));
+    } catch {
+      // The page remains usable if private-mode storage is unavailable.
+    }
+  }, [bookingPolicy, draftRestored, formData, lastYearChoice, lastYearData, selectedSeats, step]);
+
+  useEffect(() => {
+    if (step !== 2 || !firstRecognizedSeat || lastYearSeatFocusRef.current === firstRecognizedSeat.id) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`seat-${firstRecognizedSeat.id}`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      lastYearSeatFocusRef.current = firstRecognizedSeat.id;
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [firstRecognizedSeat, step]);
 
   const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +209,7 @@ export function SeatSelection() {
         const error = await response.json().catch(() => null);
         throw new Error(error?.error || "לא ניתן היה לשלוח את הבקשה");
       }
+      try { sessionStorage.removeItem(PURCHASE_DRAFT_KEY); } catch { /* ignore unavailable storage */ }
       setStep(4);
     } catch (err) {
       console.error(err);
@@ -255,11 +303,18 @@ export function SeatSelection() {
                   <div>
                     <h2 className="text-2xl font-semibold text-slate-800">בחירת מושבים</h2>
                     <p className="text-slate-500 mt-1">בחרו את המושבים הרצויים מהמפה.</p>
-                    {bookingPolicy?.priorityWindow && <p className="mt-2 text-sm font-medium text-amber-800">עד 6 בספטמבר 2026: {lastYearChoice !== "not-confirmed" && lastYearData?.found ? "אפשר לבחור את המושבים שבהם ישבת בשנה שעברה, או מושבים שהיו פנויים בשנה שעברה." : "אפשר לבחור רק מושבים שהיו פנויים בשנה שעברה."}</p>}
+                    {bookingPolicy?.priorityWindow && <p className="mt-2 text-sm font-medium text-amber-800">{lastYearChoice !== "not-confirmed" && lastYearData?.found ? "עד יום ראשון, 6.9.26, המקומות שרכשת בשנה שעברה שמורים עבורך. ניתן להמשיך עם אותם המקומות או לוותר עליהם ולבחור מקומות פנויים אחרים." : "עד יום ראשון, 6.9.26, לקוחות חדשים יכולים לבחור מושבים שהיו פנויים בשנה שעברה."}</p>}
                   </div>
                   <div className="text-sm font-medium bg-blue-50 text-blue-700 px-3 py-1 rounded-full">
                     נבחרו: {selectedSeats.length}
                   </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700" aria-label="מקרא צבעי מושבים">
+                  <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-400" />פנוי</span>
+                  <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-amber-400" />ממתין לאישור</span>
+                  <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-rose-500" />תפוס</span>
+                  {recognizedSeats.length > 0 && <span className="inline-flex items-center gap-1.5 text-indigo-700"><i className="h-2.5 w-2.5 rounded-full bg-indigo-600" />המקומות שלך</span>}
                 </div>
 
                 <div className="overflow-x-auto pb-4" dir="ltr">
@@ -284,6 +339,13 @@ export function SeatSelection() {
                       עזרת נשים
                     </div>
 
+                    {firstRecognizedSeat && <div
+                      className="pointer-events-none z-30 self-end justify-self-start whitespace-nowrap rounded-full bg-indigo-700 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                      style={{ gridRow: Math.max(1, firstRecognizedSeat.row), gridColumn: firstRecognizedSeat.col + 1 }}
+                    >
+                      המקומות שלך
+                    </div>}
+
                     {SEATS.map((seat) => {
                       const status = seatStatuses[seat.id]?.status || "available";
                       const isTaken = status === "taken";
@@ -294,6 +356,7 @@ export function SeatSelection() {
                       return (
                         <button
                           key={seat.id}
+                          id={`seat-${seat.id}`}
                           onClick={() => handleSeatClick(seat.id)}
                           disabled={isTaken || isUnavailableByPriority}
                           className={clsx(
@@ -304,6 +367,8 @@ export function SeatSelection() {
                                 ? "bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed"
                               : isSelected
                                 ? "bg-indigo-600 text-white border-indigo-700 transform scale-105 shadow-md"
+                                : recognizedSeatIds.includes(seat.id)
+                                  ? "bg-indigo-100 text-indigo-900 border-indigo-600 ring-2 ring-indigo-300 shadow-md hover:bg-indigo-200"
                                 : isPending
                                   ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
                                   : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
@@ -365,6 +430,7 @@ export function SeatSelection() {
                 >
                   למעבר לתשלום ב־PayBox
                 </a>
+                <p className="-mt-3 text-center text-sm font-semibold text-indigo-800">לאחר התשלום חזרו לעמוד זה והעלו צילום מסך של ההעברה.</p>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">צילום מסך של התשלום (חובה)</label>
@@ -421,9 +487,10 @@ export function SeatSelection() {
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
                 <h2 className="text-3xl font-semibold text-slate-800">הבקשה נשלחה בהצלחה!</h2>
-                <p className="text-slate-500 max-w-md mx-auto">
-                  המושבים שבחרת מסומנים כעת כ"בהמתנה". המנהל יבדוק את התשלום ויאשר את בקשתך בהקדם.
-                </p>
+                <div className="mx-auto max-w-lg space-y-3 text-slate-600">
+                  <p className="text-lg font-medium text-slate-800">הבקשה עבור {selectedSeats.join(", ")} התקבלה בהצלחה. סכום ששולם: {totalAmount.toLocaleString("he-IL")} ₪.</p>
+                  <p>לאחר בדיקת התשלום הנהלת בית הכנסת תאשר את המקומות והסטטוס במפה יתעדכן.</p>
+                </div>
                 <div className="pt-8">
                   <button
                     onClick={() => window.location.href = '/'}
