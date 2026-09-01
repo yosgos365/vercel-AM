@@ -503,18 +503,32 @@ export function findLastYearUser(firstName: string, lastName: string) {
     if (exact === saved || softNormalize(exact) === softNormalize(saved)) return true;
     return Math.min(exact.length, saved.length) >= 4 && distance(exact, saved) <= 1;
   };
+  const nameWords = (...parts: string[]) => normalize(parts.filter(Boolean).join(" ")).split(" ").filter(Boolean);
+  const matchesFullName = (enteredFirst: string, enteredLast: string, storedFirst: string, storedLast: string) => {
+    const entered = nameWords(enteredFirst, enteredLast);
+    const stored = nameWords(storedFirst, storedLast);
+    if (!entered.length || !stored.length) return false;
+    // A one-word historic entry can be either a first or a family name.
+    if (stored.length === 1) return entered.some(word => matchesPart(word, stored[0]));
+    // Match words as one complete name, irrespective of the field in which a
+    // word was entered or the order of first/family name in an old source.
+    // This also handles middle names and the familiar חסר/מלא spellings.
+    const shorter = entered.length <= stored.length ? entered : stored;
+    const longer = entered.length <= stored.length ? stored : entered;
+    if (shorter.length < 2) return false;
+    const unmatched = new Set(longer.map((_, index) => index));
+    return shorter.every(word => {
+      const matchIndex = [...unmatched].find(index => matchesPart(word, longer[index]));
+      if (matchIndex === undefined) return false;
+      unmatched.delete(matchIndex);
+      return true;
+    });
+  };
   const lastYearRows = useFirestore()
     ? (firestoreState?.lastYearUsers || []).map(item => ({ first_name: item.firstName, last_name: item.lastName, seats_json: JSON.stringify(item.seats) }))
     : db.prepare("SELECT * FROM last_year_users").all() as any[];
   const row = lastYearRows.find((item: any) => {
-    const storedParts = [item.first_name, item.last_name].map(normalize).filter(Boolean);
-    // One-word historic entries are ambiguous: they can be either a first or
-    // a family name. Ask for confirmation whenever either entered part fits.
-    if (storedParts.length === 1) return matchesPart(firstName || "", storedParts[0]) || matchesPart(lastName || "", storedParts[0]);
-    // Some source rows have first/family names reversed. Accept both orders;
-    // the public confirmation dialog remains the final safeguard.
-    return (matchesPart(firstName || "", item.first_name) && matchesPart(lastName || "", item.last_name)) ||
-      (matchesPart(firstName || "", item.last_name) && matchesPart(lastName || "", item.first_name));
+    return matchesFullName(firstName || "", lastName || "", item.first_name || "", item.last_name || "");
   });
   return row ? { found: true, name: `${row.first_name} ${row.last_name}`.trim(), seats: parseJson(row.seats_json, []) } : { found: false };
 }

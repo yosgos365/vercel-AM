@@ -261,13 +261,17 @@ export function AdminDashboard() {
     setShowLastYearTable(true);
   };
   const saveLastYearTable = async () => {
-    const groupedSeats = new Map<string, string[]>();
+    const groupedSeats = new Map<string, { firstName: string; lastName: string; seats: string[] }>();
     for (const row of lastYearTable) {
-      const name = [row.firstName, row.lastName].map(value => value.trim().replace(/\s+/g, " ")).filter(Boolean).join(" ");
-      if (!name) continue;
-      groupedSeats.set(name, [...(groupedSeats.get(name) || []), row.id]);
+      const firstName = row.firstName.trim().replace(/\s+/g, " ");
+      const lastName = row.lastName.trim().replace(/\s+/g, " ");
+      if (!firstName && !lastName) continue;
+      const key = `${firstName}\u0000${lastName}`;
+      const existing = groupedSeats.get(key) || { firstName, lastName, seats: [] };
+      existing.seats.push(row.id);
+      groupedSeats.set(key, existing);
     }
-    const users = [...groupedSeats.entries()].map(([name, seats]) => ({ name, seats }));
+    const users = [...groupedSeats.values()];
     setLastYearTableMessage("שומר את הרשימה...");
     setSavingLastYearTable(true);
     try {

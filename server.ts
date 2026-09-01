@@ -790,15 +790,26 @@ app.post("/api/admin/developer/last-year-users", developerAuth, async (req, res)
     const occupiedSeats = new Set<string>();
     const nextUsers: DBState["lastYearUsers"] = [];
     for (const item of users) {
-      const name = typeof item?.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
+      // Preserve the editor's two visible fields verbatim.  In particular,
+      // a middle name entered with the first name must not silently move to
+      // the family-name field when the historical table is saved.
+      const firstName = typeof item?.firstName === "string" ? item.firstName.trim().replace(/\s+/g, " ") : "";
+      const lastName = typeof item?.lastName === "string" ? item.lastName.trim().replace(/\s+/g, " ") : "";
+      const legacyName = typeof item?.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
+      const displayName = [firstName, lastName].filter(Boolean).join(" ") || legacyName;
       const seats = Array.isArray(item?.seats) ? item.seats.filter((seat: unknown): seat is string => typeof seat === "string" && SEAT_IDS.has(seat)) : [];
-      if (!name && !seats.length) continue;
-      if (!name || !seats.length || new Set(seats).size !== seats.length || seats.some(seat => occupiedSeats.has(seat))) {
+      if (!displayName && !seats.length) continue;
+      if (!displayName || !seats.length || new Set(seats).size !== seats.length || seats.some(seat => occupiedSeats.has(seat))) {
         return res.status(400).json({ error: "לכל שם יש להזין מושב אחד לפחות, וכל מושב יכול להופיע פעם אחת בלבד" });
       }
       seats.forEach(seat => occupiedSeats.add(seat));
-      const [firstName, ...lastNameParts] = name.split(" ");
-      nextUsers.push({ id: `last-year-${nextUsers.length}-${Date.now()}`, firstName: lastNameParts.length ? firstName : "", lastName: lastNameParts.length ? lastNameParts.join(" ") : firstName, seats });
+      const fallbackParts = legacyName.split(" ");
+      nextUsers.push({
+        id: `last-year-${nextUsers.length}-${Date.now()}`,
+        firstName: firstName || (fallbackParts.length > 1 ? fallbackParts.slice(0, -1).join(" ") : ""),
+        lastName: lastName || fallbackParts.at(-1) || "",
+        seats,
+      });
     }
     const db = await readDB();
     db.lastYearUsers = nextUsers;
