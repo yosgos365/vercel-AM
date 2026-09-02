@@ -120,12 +120,13 @@ export function Home() {
                       names.length > 0 ? (
                         <>
                           <span
-                            className="max-w-full overflow-hidden px-0.5 text-[13px] font-bold leading-[1.18]"
+                            className="max-w-full overflow-hidden px-0.5 text-[12px] font-bold leading-[1.2] sm:text-[13px]"
                             style={{
                               display: "-webkit-box",
                               WebkitBoxOrient: "vertical",
-                              WebkitLineClamp: 3,
-                              overflowWrap: "anywhere",
+                              WebkitLineClamp: 4,
+                              overflowWrap: "normal",
+                              wordBreak: "normal",
                             }}
                           >
                             {names.join(" · ")}
@@ -136,8 +137,9 @@ export function Home() {
                               style={{
                                 display: "-webkit-box",
                                 WebkitBoxOrient: "vertical",
-                                WebkitLineClamp: 1,
-                                overflowWrap: "anywhere",
+                              WebkitLineClamp: 2,
+                              overflowWrap: "normal",
+                              wordBreak: "normal",
                               }}
                             >
                               ממתין: {publicSeat.pendingNames.join(" · ")}
