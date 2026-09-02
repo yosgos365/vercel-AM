@@ -114,7 +114,7 @@ export function Home() {
                     }}
                     title={`${seat.label} - ${status === 'available' ? 'פנוי' : status === 'pending' ? 'בהמתנה' : 'תפוס'}`}
                   >
-                    {viewMode ? (names.length > 0 ? <><span className="max-w-full break-words text-[11px] font-semibold leading-tight">{names.join(" · ")}</span>{publicStatus === "taken" && publicSeat?.pendingNames.length ? <span className="mt-1 text-[8px] leading-tight text-amber-800">ממתין: {publicSeat.pendingNames.join(" · ")}</span> : null}</> : null) : seat.label}
+                    {viewMode ? (names.length > 0 ? <><span className="max-w-full break-words text-[11px] font-semibold leading-tight">{names.join(" · ")}</span>{publicStatus === "taken" && publicSeat?.pendingNames.length ? <span className="mt-1 text-[8px] leading-tight text-amber-800">ממתין: {publicSeat.pendingNames.join(" · ")}</span> : null}</> : <span className="text-xs font-medium text-slate-500">{seat.label}</span>) : seat.label}
                   </div>
                 );
               })}
