@@ -232,9 +232,10 @@ app.get("/api/public-seating", async (_req, res) => {
   const db = await readDB();
   const approved = new Map<string, string[]>();
   const pending = new Map<string, string[]>();
+  const normalizePublicName = (value: string) => value.trim().replace(/\s+/g, " ");
   for (const request of db.requests) {
     if (request.status === "rejected") continue;
-    const name = [request.firstName, request.lastName].filter(Boolean).join(" ").trim();
+    const name = normalizePublicName([request.firstName, request.lastName].filter(Boolean).join(" "));
     if (!name) continue;
     const target = request.status === "approved" ? approved : pending;
     for (const seatId of request.seats) {
@@ -245,18 +246,19 @@ app.get("/api/public-seating", async (_req, res) => {
     }
   }
   const seats = Object.fromEntries(SEATS.map(seat => {
-    const approvedNames = approved.get(seat.id) || [];
-    const pendingNames = pending.get(seat.id) || [];
+    const approvedNames = [...new Set((approved.get(seat.id) || []).map(normalizePublicName).filter(Boolean))];
+    const pendingNames = [...new Set((pending.get(seat.id) || []).map(normalizePublicName).filter(Boolean))];
     const seatIndex = db.seats[seat.id];
     // The dashboard can also contain a direct/manual assignment.  The compact
     // seat index is the final source of truth for those seats, so include it
     // here rather than losing names that are not attached to a request record.
-    if (seatIndex?.status === "taken" && seatIndex.owner && !approvedNames.includes(seatIndex.owner)) {
-      approvedNames.unshift(seatIndex.owner);
+    const indexedOwner = normalizePublicName(seatIndex?.owner || "");
+    if (seatIndex?.status === "taken" && indexedOwner && !approvedNames.includes(indexedOwner)) {
+      approvedNames.unshift(indexedOwner);
     }
     if (seatIndex?.status === "pending" && seatIndex.reservedBy && !pendingNames.length) {
       const request = db.requests.find(item => item.id === seatIndex.reservedBy);
-      const name = request ? [request.firstName, request.lastName].filter(Boolean).join(" ").trim() : "";
+      const name = request ? normalizePublicName([request.firstName, request.lastName].filter(Boolean).join(" ")) : "";
       if (name) pendingNames.push(name);
     }
     return [seat.id, {
