@@ -19,20 +19,22 @@ export function Home() {
   const [viewMode, setViewMode] = useState(false);
 
   useEffect(() => {
-    fetch("/api/seats")
-      .then((res) => res.json())
-      .then((data) => {
-        setSeatStatuses(data);
-        setLoading(false);
+    Promise.all([
+      fetch("/api/seats").then((res) => {
+        if (!res.ok) throw new Error("Failed to load seats");
+        return res.json();
+      }),
+      fetch("/api/public-seating").then((res) => {
+        if (!res.ok) throw new Error("Failed to load public seating");
+        return res.json();
+      }),
+    ])
+      .then(([statuses, seating]) => {
+        setSeatStatuses(statuses);
+        setPublicSeats(seating.seats || {});
       })
-      .catch((err) => {
-        console.error("Failed to load seats", err);
-        setLoading(false);
-      });
-    fetch("/api/public-seating")
-      .then((res) => res.json())
-      .then((data) => setPublicSeats(data.seats || {}))
-      .catch((err) => console.error("Failed to load public seating", err));
+      .catch((err) => console.error("Failed to load seating map", err))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -72,8 +74,8 @@ export function Home() {
             <div 
               className={clsx("public-seat-map inline-grid gap-1.5 mx-auto p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm relative", viewMode && "public-seating-map")}
               style={{
-                gridTemplateColumns: `repeat(${MAX_COLS}, ${viewMode ? 72 : 38}px)`,
-                gridTemplateRows: `repeat(${MAX_ROWS}, ${viewMode ? 68 : 26}px)`,
+                gridTemplateColumns: `repeat(${MAX_COLS}, ${viewMode ? 78 : 38}px)`,
+                gridTemplateRows: `repeat(${MAX_ROWS}, ${viewMode ? 74 : 26}px)`,
               }}
             >
               {/* Static Elements */}
@@ -114,7 +116,38 @@ export function Home() {
                     }}
                     title={`${seat.label} - ${status === 'available' ? 'פנוי' : status === 'pending' ? 'בהמתנה' : 'תפוס'}`}
                   >
-                    {viewMode ? (names.length > 0 ? <><span className="max-w-full break-words text-[11px] font-semibold leading-tight">{names.join(" · ")}</span>{publicStatus === "taken" && publicSeat?.pendingNames.length ? <span className="mt-1 text-[8px] leading-tight text-amber-800">ממתין: {publicSeat.pendingNames.join(" · ")}</span> : null}</> : <span className="text-xs font-medium text-slate-500">{seat.label}</span>) : seat.label}
+                    {viewMode ? (
+                      names.length > 0 ? (
+                        <>
+                          <span
+                            className="max-w-full overflow-hidden px-0.5 text-[13px] font-bold leading-[1.18]"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitBoxOrient: "vertical",
+                              WebkitLineClamp: 3,
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {names.join(" · ")}
+                          </span>
+                          {publicStatus === "taken" && publicSeat?.pendingNames.length ? (
+                            <span
+                              className="mt-1 max-w-full overflow-hidden px-0.5 text-[9px] font-medium leading-tight text-amber-800"
+                              style={{
+                                display: "-webkit-box",
+                                WebkitBoxOrient: "vertical",
+                                WebkitLineClamp: 1,
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              ממתין: {publicSeat.pendingNames.join(" · ")}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-500">{seat.label}</span>
+                      )
+                    ) : seat.label}
                   </div>
                 );
               })}
