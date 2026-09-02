@@ -9,7 +9,6 @@ import { PublicLayout } from "./components/PublicLayout";
 import { AdminLayout } from "./components/AdminLayout";
 import { Home } from "./pages/Home";
 import { SeatSelection } from "./pages/SeatSelection";
-import { PublicSeatingView } from "./pages/PublicSeatingView";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { AdminLogin } from "./pages/AdminLogin";
 import { useStore } from "./store";
@@ -26,7 +25,6 @@ export default function App() {
         <Route path="/" element={<PublicLayout />}>
           <Route index element={<Home />} />
           <Route path="select" element={<SeatSelection />} />
-          <Route path="view" element={<PublicSeatingView />} />
         </Route>
         
         <Route path="/admin">

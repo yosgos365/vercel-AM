@@ -247,8 +247,20 @@ app.get("/api/public-seating", async (_req, res) => {
   const seats = Object.fromEntries(SEATS.map(seat => {
     const approvedNames = approved.get(seat.id) || [];
     const pendingNames = pending.get(seat.id) || [];
+    const seatIndex = db.seats[seat.id];
+    // The dashboard can also contain a direct/manual assignment.  The compact
+    // seat index is the final source of truth for those seats, so include it
+    // here rather than losing names that are not attached to a request record.
+    if (seatIndex?.status === "taken" && seatIndex.owner && !approvedNames.includes(seatIndex.owner)) {
+      approvedNames.unshift(seatIndex.owner);
+    }
+    if (seatIndex?.status === "pending" && seatIndex.reservedBy && !pendingNames.length) {
+      const request = db.requests.find(item => item.id === seatIndex.reservedBy);
+      const name = request ? [request.firstName, request.lastName].filter(Boolean).join(" ").trim() : "";
+      if (name) pendingNames.push(name);
+    }
     return [seat.id, {
-      status: approvedNames.length ? "taken" : pendingNames.length ? "pending" : "available",
+      status: seatIndex?.status === "taken" || approvedNames.length ? "taken" : seatIndex?.status === "pending" || pendingNames.length ? "pending" : "available",
       approvedNames,
       pendingNames,
     }];

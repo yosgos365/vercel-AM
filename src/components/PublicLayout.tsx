@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { User, Map as MapIcon, Lock, Eye } from "lucide-react";
+import { User, Map as MapIcon, Lock } from "lucide-react";
 import { clsx } from "clsx";
 
 export function PublicLayout() {
@@ -38,18 +38,6 @@ export function PublicLayout() {
               >
                 <User className="w-4 h-4" />
                 רכישת כסא
-              </Link>
-              <Link
-                to="/view"
-                className={clsx(
-                  "px-3 py-2.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap",
-                  location.pathname === "/view"
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-stone-600 hover:bg-stone-100"
-                )}
-              >
-                <Eye className="w-4 h-4" />
-                צפייה בשיבוץ
               </Link>
             </nav>
             
