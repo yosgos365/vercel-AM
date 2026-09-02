@@ -226,6 +226,36 @@ app.get("/api/seats", async (req, res) => {
   res.json(getSeatStatuses());
 });
 
+// Public, privacy-conscious seating view: exposes only first/last names and
+// the approval state — never phone numbers, payment images, or request data.
+app.get("/api/public-seating", async (_req, res) => {
+  const db = await readDB();
+  const approved = new Map<string, string[]>();
+  const pending = new Map<string, string[]>();
+  for (const request of db.requests) {
+    if (request.status === "rejected") continue;
+    const name = [request.firstName, request.lastName].filter(Boolean).join(" ").trim();
+    if (!name) continue;
+    const target = request.status === "approved" ? approved : pending;
+    for (const seatId of request.seats) {
+      if (!SEAT_IDS.has(seatId)) continue;
+      const names = target.get(seatId) || [];
+      if (!names.includes(name)) names.push(name);
+      target.set(seatId, names);
+    }
+  }
+  const seats = Object.fromEntries(SEATS.map(seat => {
+    const approvedNames = approved.get(seat.id) || [];
+    const pendingNames = pending.get(seat.id) || [];
+    return [seat.id, {
+      status: approvedNames.length ? "taken" : pendingNames.length ? "pending" : "available",
+      approvedNames,
+      pendingNames,
+    }];
+  }));
+  res.json({ seats });
+});
+
 // Public: Check if user exists in last year DB
 app.post("/api/check-last-year", async (req, res) => {
   const { firstName, lastName } = req.body;

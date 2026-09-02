@@ -32,6 +32,11 @@ button { cursor: pointer; }
   }
   .public-seat-map button, .public-seat-map > div { font-size: 0.7rem !important; }
   .public-seat-map button { min-width: 30px; min-height: 28px; }
+  .public-seating-map {
+    grid-template-columns: repeat(34, 52px) !important;
+    grid-template-rows: repeat(16, 54px) !important;
+    gap: 5px !important;
+  }
 }
 
 @media screen {
