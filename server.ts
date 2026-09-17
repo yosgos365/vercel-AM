@@ -7,7 +7,7 @@ import bodyParser from "body-parser";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
-import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationUser, donationCollectionsReady, getDonationDashboard, markDonationPayment, updateDonationUser } from "./donationDatabase";
+import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, updateDonationUser } from "./donationDatabase";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
@@ -26,6 +26,8 @@ const SEAT_IDS = new Set(SEATS.map((seat) => seat.id));
 const PRIORITY_BOOKING_END = "2026-09-06";
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "213223";
 const DEVELOPER_SESSION_MS = 8 * 60 * 60 * 1000;
+const DONATION_USER_SESSION_MS = 8 * 60 * 60 * 1000;
+const DONATION_USER_SESSION_SECRET = process.env.DONATION_USER_SESSION_SECRET || DEVELOPER_PASSWORD;
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
@@ -66,6 +68,25 @@ const isDeveloperTokenValid = (token: string, deviceId: string) => {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     return data.deviceId === deviceId && Number(data.expiresAt) > Date.now();
   } catch { return false; }
+};
+
+const createDonationUserToken = (userId: string, expiresAt: number) => {
+  const payload = Buffer.from(JSON.stringify({ userId, expiresAt })).toString("base64url");
+  const signature = crypto.createHmac("sha256", DONATION_USER_SESSION_SECRET).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+};
+
+const donationUserIdFromToken = (token: string) => {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return null;
+  const expected = crypto.createHmac("sha256", DONATION_USER_SESSION_SECRET).update(payload).digest("base64url");
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try {
+    const value = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return typeof value.userId === "string" && Number(value.expiresAt) > Date.now() ? value.userId : null;
+  } catch {
+    return null;
+  }
 };
 
 const validateSeatList = (seats: unknown): seats is string[] =>
@@ -235,6 +256,14 @@ const developerAuth = (req: express.Request, res: express.Response, next: expres
   next();
 };
 
+const donationUserAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/, "") || "";
+  const userId = donationUserIdFromToken(token);
+  if (!userId) return res.status(401).json({ error: "תוקף ההתחברות פג. יש להתחבר מחדש." });
+  (req as express.Request & { donationUserId?: string }).donationUserId = userId;
+  next();
+};
+
 // --- API ROUTES ---
 
 app.use("/uploads", express.static(UPLOAD_DIR));
@@ -361,6 +390,63 @@ app.post("/api/donations/admin/pledges/payment", adminAuth, async (req, res) => 
     const paymentMethod = req.body?.paymentMethod;
     if (paymentMethod !== "paybox" && paymentMethod !== "bank" && paymentMethod !== "cash") throw new Error("אמצעי התשלום אינו תקין");
     const receiptImage = req.body?.receiptImage ? await storeDonationReceiptImage(req.body.receiptImage, pledgeIds[0] || "payment") : undefined;
+    await markDonationPayment(pledgeIds, paymentMethod, receiptImage);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "דיווח התשלום נכשל" });
+  }
+});
+
+// The client requested a phone-number-only flow for now.  The token still
+// scopes every subsequent request to that one user; replacing this endpoint
+// with Firebase Phone Auth later will not require changing the dashboards.
+app.post("/api/donations/login", async (req, res) => {
+  try {
+    const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
+    const user = await findDonationUserByPhone(phone);
+    if (!user) return res.json({ registrationRequired: true });
+    const expiresAt = Date.now() + DONATION_USER_SESSION_MS;
+    res.json({ user, token: createDonationUserToken(user.id, expiresAt), expiresAt });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "ההתחברות נכשלה" });
+  }
+});
+
+app.post("/api/donations/register", async (req, res) => {
+  try {
+    const user = await createDonationUser(req.body || {});
+    const expiresAt = Date.now() + DONATION_USER_SESSION_MS;
+    res.status(201).json({ user, token: createDonationUserToken(user.id, expiresAt), expiresAt });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "ההרשמה נכשלה" });
+  }
+});
+
+app.get("/api/donations/me", donationUserAuth, async (req, res) => {
+  const userId = (req as express.Request & { donationUserId: string }).donationUserId;
+  const user = await getDonationUser(userId);
+  if (!user) return res.status(404).json({ error: "המשתמש לא נמצא" });
+  res.json({ user, pledges: await getDonationPledgesForUser(userId) });
+});
+
+app.put("/api/donations/me", donationUserAuth, async (req, res) => {
+  try {
+    const userId = (req as express.Request & { donationUserId: string }).donationUserId;
+    res.json({ user: await updateDonationUser(userId, req.body || {}) });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "עדכון הפרטים נכשל" });
+  }
+});
+
+app.post("/api/donations/me/payment", donationUserAuth, async (req, res) => {
+  try {
+    const userId = (req as express.Request & { donationUserId: string }).donationUserId;
+    const pledgeIds = Array.isArray(req.body?.pledgeIds) ? req.body.pledgeIds.filter((item: unknown): item is string => typeof item === "string") : [];
+    const ownedPledges = await getDonationPledgesForUser(userId);
+    if (pledgeIds.some(pledgeId => !ownedPledges.some(pledge => pledge.id === pledgeId))) throw new Error("ניתן לשלם רק עבור התחייבויות שלך");
+    const paymentMethod = req.body?.paymentMethod;
+    if (paymentMethod !== "paybox" && paymentMethod !== "bank") throw new Error("אמצעי התשלום אינו תקין");
+    const receiptImage = await storeDonationReceiptImage(req.body?.receiptImage, pledgeIds[0] || "payment");
     await markDonationPayment(pledgeIds, paymentMethod, receiptImage);
     res.json({ success: true });
   } catch (error) {

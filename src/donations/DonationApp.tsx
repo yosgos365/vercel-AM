@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { Login } from "./components/Login";
+import { Registration } from "./components/Registration";
+import { UserDashboard } from "./components/UserDashboard";
 import type { DonationDashboardData, DonationUser, Pledge } from "./types";
 
 const ADMIN_TOKEN_KEY = "ahavat-menachem-donations-admin-token";
+const USER_TOKEN_KEY = "ahavat-menachem-donations-user-token";
 
 const safeToken = () => {
   try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ""; }
@@ -17,9 +20,31 @@ const saveToken = (token: string) => {
   } catch { /* Private browsing can disable session storage. */ }
 };
 
+const savedUserToken = () => {
+  try { return sessionStorage.getItem(USER_TOKEN_KEY) || ""; }
+  catch { return ""; }
+};
+
+const saveUserToken = (token: string) => {
+  try {
+    if (token) sessionStorage.setItem(USER_TOKEN_KEY, token);
+    else sessionStorage.removeItem(USER_TOKEN_KEY);
+  } catch { /* Private browsing can disable session storage. */ }
+};
+
+const fileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error("קריאת האסמכתא נכשלה"));
+  reader.onload = () => resolve(String(reader.result));
+  reader.readAsDataURL(file);
+});
+
 export function DonationApp() {
   const [token, setToken] = useState(safeToken);
   const [data, setData] = useState<DonationDashboardData>({ users: [], pledges: [] });
+  const [userToken, setUserToken] = useState(savedUserToken);
+  const [userData, setUserData] = useState<{ user: DonationUser; pledges: Pledge[] } | null>(null);
+  const [registeringPhone, setRegisteringPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -57,6 +82,41 @@ export function DonationApp() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  const userRequest = useCallback(async (url: string, options: RequestInit = {}) => {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${userToken}`,
+        ...(options.headers || {}),
+      },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || "הפעולה נכשלה");
+    return body;
+  }, [userToken]);
+
+  const refreshUser = useCallback(async () => {
+    if (!userToken) return;
+    setLoading(true);
+    try {
+      setUserData(await userRequest("/api/donations/me"));
+      setError("");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "טעינת הנתונים נכשלה";
+      setError(message);
+      setUserData(null);
+      if (message.includes("תוקף ההתחברות")) {
+        setUserToken("");
+        saveUserToken("");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [userRequest, userToken]);
+
+  useEffect(() => { void refreshUser(); }, [refreshUser]);
+
   const adminLogin = async (password: string) => {
     setLoading(true);
     try {
@@ -86,12 +146,110 @@ export function DonationApp() {
     }
   };
 
+  const userLogin = async (phone: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/donations/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "ההתחברות נכשלה");
+      if (body.registrationRequired) {
+        setRegisteringPhone(phone);
+        setError("");
+        return;
+      }
+      saveUserToken(body.token);
+      setUserToken(body.token);
+      setUserData({ user: body.user, pledges: [] });
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ההתחברות נכשלה");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const registerUser = async (input: { name: string; phone: string; hebrewDob: { year: number; month: number; day: number } }) => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/donations/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "ההרשמה נכשלה");
+      saveUserToken(body.token);
+      setUserToken(body.token);
+      setUserData({ user: body.user, pledges: [] });
+      setRegisteringPhone(null);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ההרשמה נכשלה");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateCurrentUser = async (user: DonationUser) => {
+    try {
+      await userRequest("/api/donations/me", { method: "PUT", body: JSON.stringify(user) });
+      await refreshUser();
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "עדכון הפרטים נכשל");
+    }
+  };
+
+  const submitCurrentUserPayment = async (pledgeIds: string[], method: "paybox" | "bank", file: File | null) => {
+    if (!file) {
+      alert("יש לצרף אסמכתא לתשלום");
+      return;
+    }
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error("גודל תמונת האסמכתא המרבי הוא 5MB");
+      await userRequest("/api/donations/me/payment", {
+        method: "POST",
+        body: JSON.stringify({ pledgeIds, paymentMethod: method, receiptImage: await fileAsDataUrl(file) }),
+      });
+      await refreshUser();
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "דיווח התשלום נכשל");
+    }
+  };
+
+  if (registeringPhone) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4" dir="rtl">
+        <Registration
+          initialPhone={registeringPhone}
+          onRegister={(input) => void registerUser(input)}
+          onCancel={() => { setRegisteringPhone(null); setError(""); }}
+        />
+      </div>
+    );
+  }
+
+  if (userToken && userData) {
+    return (
+      <UserDashboard
+        user={userData.user}
+        pledges={userData.pledges}
+        onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
+        onSubmitPayment={(pledgeIds, method, file) => void submitCurrentUserPayment(pledgeIds, method, file)}
+        onUpdateUser={(user) => void updateCurrentUser(user)}
+      />
+    );
+  }
+
   if (!token) {
     return (
       <Login
         error={error || (loading ? "מתחבר..." : undefined)}
         onAdminLogin={(password) => void adminLogin(password)}
-        onLogin={() => setError("התחברות טלפונית מאובטחת תופעל לאחר הגדרת אימות SMS ב־Firebase.")}
+        onLogin={(phone) => void userLogin(phone)}
       />
     );
   }
