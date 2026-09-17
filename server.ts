@@ -7,6 +7,7 @@ import bodyParser from "body-parser";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
+import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationUser, donationCollectionsReady, getDonationDashboard, markDonationPayment, updateDonationUser } from "./donationDatabase";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
@@ -182,6 +183,23 @@ async function storePaymentImage(paymentImage: unknown, requestId: string): Prom
   throw new Error("אחסון Firebase לצילומי התשלום אינו זמין");
 }
 
+async function storeDonationReceiptImage(receiptImage: unknown, pledgeId: string): Promise<string> {
+  if (typeof receiptImage !== "string") throw new Error("חסרה תמונת אסמכתא");
+  const match = receiptImage.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error("יש להעלות תמונת JPG, PNG או WebP תקינה");
+  const image = Buffer.from(match[2], "base64");
+  if (!image.length || image.length > MAX_PAYMENT_IMAGE_BYTES) throw new Error("גודל תמונת האסמכתא המרבי הוא 5MB");
+  const extension = match[1] === "image/png" ? "png" : match[1] === "image/webp" ? "webp" : "jpg";
+  const bucket = firebaseStorageBucket();
+  if (!bucket) throw new Error("אחסון Firebase לצילומי אסמכתא אינו זמין");
+  const objectName = `donation-receipts/${pledgeId}-${Date.now()}.${extension}`;
+  await bucket.file(objectName).save(image, {
+    resumable: false,
+    metadata: { contentType: match[1], cacheControl: "private, no-store", metadata: { pledgeId } },
+  });
+  return `/api/donations/receipt-images/${FIREBASE_IMAGE_TOKEN_PREFIX}${Buffer.from(objectName).toString("base64url")}`;
+}
+
 async function migrateLegacyPaymentImages() {
   const db = await readDB();
   let changed = false;
@@ -284,6 +302,70 @@ app.post("/api/check-last-year", async (req, res) => {
     lastYearOccupiedSeats: rules.lastYearOccupiedSeats,
     effectiveDate: rules.date,
   });
+});
+
+// Donation management is intentionally separated from the seating data.  All
+// of these endpoints use the existing server-side administrator session.
+app.get("/api/donations/admin/dashboard", adminAuth, async (_req, res) => {
+  try {
+    res.json(await getDonationDashboard());
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "טעינת נתוני התרומות נכשלה" });
+  }
+});
+
+app.post("/api/donations/admin/users", adminAuth, async (req, res) => {
+  try {
+    res.status(201).json(await createDonationUser(req.body || {}));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "שמירת המתפלל נכשלה" });
+  }
+});
+
+app.put("/api/donations/admin/users/:id", adminAuth, async (req, res) => {
+  try {
+    res.json(await updateDonationUser(req.params.id, req.body || {}));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "עדכון המתפלל נכשל" });
+  }
+});
+
+app.delete("/api/donations/admin/users/:id", adminAuth, async (req, res) => {
+  try {
+    await deleteDonationUser(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "מחיקת המתפלל נכשלה" });
+  }
+});
+
+app.post("/api/donations/admin/pledges", adminAuth, async (req, res) => {
+  try {
+    res.status(201).json(await createDonationPledge(req.body || {}));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "יצירת ההתחייבות נכשלה" });
+  }
+});
+
+app.post("/api/donations/admin/pledges/:id/approve", adminAuth, async (req, res) => {
+  try {
+    res.json(await approveDonationPledge(req.params.id));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "אישור ההתחייבות נכשל" });
+  }
+});
+
+app.post("/api/donations/admin/pledges/payment", adminAuth, async (req, res) => {
+  try {
+    const pledgeIds = Array.isArray(req.body?.pledgeIds) ? req.body.pledgeIds.filter((item: unknown): item is string => typeof item === "string") : [];
+    const paymentMethod = req.body?.paymentMethod;
+    if (paymentMethod !== "paybox" && paymentMethod !== "bank" && paymentMethod !== "cash") throw new Error("אמצעי התשלום אינו תקין");
+    const receiptImage = req.body?.receiptImage ? await storeDonationReceiptImage(req.body.receiptImage, pledgeIds[0] || "payment") : undefined;
+    await markDonationPayment(pledgeIds, paymentMethod, receiptImage);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "דיווח התשלום נכשל" });
+  }
 });
 
 app.post("/api/admin/developer/unlock", (req, res) => {
@@ -930,6 +1012,7 @@ export async function initializeApplication() {
   // dashboard and submitted forms all operate on the same current state.
   if (process.env.NETLIFY === "true" || process.env.VERCEL === "1") {
     await initDatabase();
+    await donationCollectionsReady();
     if (!applicationInitialized) {
       await migrateLegacyPaymentImages();
       applicationInitialized = true;
@@ -939,6 +1022,7 @@ export async function initializeApplication() {
   if (applicationInitialized) return;
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
   await initDatabase();
+  await donationCollectionsReady();
   await migrateLegacyPaymentImages();
   applicationInitialized = true;
 }
