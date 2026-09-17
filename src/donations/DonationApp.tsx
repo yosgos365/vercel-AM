@@ -147,17 +147,22 @@ export function DonationApp() {
   };
 
   const userLogin = async (phone: string) => {
+    const normalizedPhone = phone.replace(/\D/g, "");
+    if (!/^(?:05\d{8}|050)$/.test(normalizedPhone)) {
+      setError("יש להזין מספר טלפון נייד תקין.");
+      return;
+    }
     setLoading(true);
     try {
       const response = await fetch("/api/donations/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: normalizedPhone }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "ההתחברות נכשלה");
       if (body.registrationRequired) {
-        setRegisteringPhone(phone);
+        setRegisteringPhone(normalizedPhone);
         setError("");
         return;
       }
@@ -234,13 +239,15 @@ export function DonationApp() {
 
   if (userToken && userData) {
     return (
-      <UserDashboard
-        user={userData.user}
-        pledges={userData.pledges}
-        onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
-        onSubmitPayment={(pledgeIds, method, file) => void submitCurrentUserPayment(pledgeIds, method, file)}
-        onUpdateUser={(user) => void updateCurrentUser(user)}
-      />
+      <div dir="rtl">
+        <UserDashboard
+          user={userData.user}
+          pledges={userData.pledges}
+          onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
+          onSubmitPayment={(pledgeIds, method, file) => void submitCurrentUserPayment(pledgeIds, method, file)}
+          onUpdateUser={(user) => void updateCurrentUser(user)}
+        />
+      </div>
     );
   }
 
@@ -266,7 +273,7 @@ export function DonationApp() {
   };
 
   return (
-    <>
+    <div dir="rtl">
       {loading && <div className="fixed inset-x-0 top-0 z-[100] h-1 bg-blue-600 animate-pulse" />}
       <AdminDashboard
         user={admin}
@@ -289,6 +296,6 @@ export function DonationApp() {
         onAddUser={(name, phone) => void mutate("/api/donations/admin/users", "POST", { name, phone })}
         onDeleteUser={(userId) => void mutate(`/api/donations/admin/users/${userId}`, "DELETE")}
       />
-    </>
+    </div>
   );
 }

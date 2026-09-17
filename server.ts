@@ -403,6 +403,7 @@ app.post("/api/donations/admin/pledges/payment", adminAuth, async (req, res) => 
 app.post("/api/donations/login", async (req, res) => {
   try {
     const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
+    if (!/^(?:05\d{8}|050)$/.test(phone.replace(/\D/g, ""))) return res.status(400).json({ error: "יש להזין מספר טלפון נייד תקין" });
     const user = await findDonationUserByPhone(phone);
     if (!user) return res.json({ registrationRequired: true });
     const expiresAt = Date.now() + DONATION_USER_SESSION_MS;

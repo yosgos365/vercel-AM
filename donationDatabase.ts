@@ -59,7 +59,8 @@ const pledgeFromData = (documentId: string, data: Record<string, unknown>): Pled
   updatedAt: asTime(data.updatedAt),
 });
 
-const normalizedPhone = (phone: string) => phone.replace(/[^0-9+]/g, "");
+const normalizedPhone = (phone: string) => phone.replace(/\D/g, "");
+const isDonationPhone = (phone: string) => /^(?:05\d{8}|050)$/.test(normalizedPhone(phone));
 
 export async function getDonationDashboard(): Promise<DonationDashboardData> {
   const db = await donationFirestore();
@@ -85,6 +86,7 @@ export async function createDonationUser(input: Pick<DonationUser, "name" | "pho
   const name = asString(input.name);
   const phone = asString(input.phone);
   if (!name || !phone) throw new Error("יש למלא שם ומספר טלפון");
+  if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
   const existing = await findDonationUserByPhone(phone);
   if (existing) throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
   const now = Date.now();
@@ -113,6 +115,7 @@ export async function updateDonationUser(userId: string, changes: Partial<Pick<D
   const name = changes.name === undefined ? current.name : asString(changes.name);
   const phone = changes.phone === undefined ? current.phone : asString(changes.phone);
   if (!name || !phone) throw new Error("יש למלא שם ומספר טלפון");
+  if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
   if (normalizedPhone(phone) !== normalizedPhone(current.phone)) {
     const conflicting = await findDonationUserByPhone(phone);
     if (conflicting && conflicting.id !== userId) throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
@@ -146,6 +149,7 @@ export async function createDonationPledge(input: { userId?: string; name: strin
   const type = asString(input.type) || "אחר";
   const amount = Number(input.amount);
   if (!name || !phone || !Number.isFinite(amount) || amount <= 0) throw new Error("יש למלא שם, טלפון וסכום תקין");
+  if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
   let user = input.userId ? (await donationFirestore()).collection(USERS).doc(input.userId) : null;
   let userId = input.userId || "";
   if (!userId) {

@@ -63,8 +63,11 @@ export function Registration({ initialPhone, onRegister, onCancel }: Registratio
             type="tel"
             required
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+            inputMode="numeric"
+            maxLength={10}
+            pattern="(?:05[0-9]{8}|050)"
           />
         </div>
 
