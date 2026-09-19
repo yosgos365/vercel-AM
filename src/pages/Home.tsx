@@ -12,11 +12,11 @@ interface PublicSeat extends SeatStatus {
   pendingNames: string[];
 }
 
-export function Home() {
+export function Home({ initialViewMode = false }: { initialViewMode?: boolean }) {
   const [seatStatuses, setSeatStatuses] = useState<Record<string, SeatStatus>>({});
   const [publicSeats, setPublicSeats] = useState<Record<string, PublicSeat>>({});
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState(false);
+  const [viewMode, setViewMode] = useState(initialViewMode);
 
   useEffect(() => {
     Promise.all([

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Lock, ArrowRight } from 'lucide-react';
+import { LogIn, Lock, ArrowRight, Eye } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (phone: string) => void;
@@ -98,6 +98,11 @@ export function Login({ onLogin, onAdminLogin, error }: LoginProps) {
               </button>
             </div>
           </form>
+          {!isAdminMode && (
+            <a href="/donations/seating" className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50">
+              <Eye className="w-4 h-4" /> צפייה בשיבוץ המקומות
+            </a>
+          )}
         </div>
       </div>
     </div>
