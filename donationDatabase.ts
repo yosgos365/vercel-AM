@@ -143,6 +143,17 @@ export async function deleteDonationUser(userId: string) {
   await batch.commit();
 }
 
+/** Removes one pledge. This is exposed only through the developer endpoint. */
+export async function deleteDonationPledge(pledgeId: string): Promise<Pledge> {
+  const db = await donationFirestore();
+  const reference = db.collection(PLEDGES).doc(pledgeId);
+  const snapshot = await reference.get();
+  if (!snapshot.exists) throw new Error("ההתחייבות לא נמצאה");
+  const pledge = pledgeFromData(snapshot.id, snapshot.data()!);
+  await reference.delete();
+  return pledge;
+}
+
 export async function createDonationPledge(input: { userId?: string; name: string; phone: string; type: string; amount: number; date?: string }): Promise<Pledge> {
   const name = asString(input.name);
   const phone = asString(input.phone);

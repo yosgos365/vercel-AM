@@ -7,7 +7,7 @@ import bodyParser from "body-parser";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
-import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, updateDonationUser } from "./donationDatabase";
+import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationPledge, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, updateDonationUser } from "./donationDatabase";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
@@ -41,8 +41,13 @@ const firebaseStorageBucket = () => {
 };
 
 const firebaseImagePathFromUrl = (imageUrl: string) => {
-  if (!imageUrl.startsWith("/api/payment-images/")) return null;
-  const id = decodeURIComponent(imageUrl.slice("/api/payment-images/".length));
+  const prefix = imageUrl.startsWith("/api/payment-images/")
+    ? "/api/payment-images/"
+    : imageUrl.startsWith("/api/donations/receipt-images/")
+      ? "/api/donations/receipt-images/"
+      : null;
+  if (!prefix) return null;
+  const id = decodeURIComponent(imageUrl.slice(prefix.length));
   return firebaseImagePathFromId(id);
 };
 
@@ -67,6 +72,24 @@ const isDeveloperTokenValid = (token: string, deviceId: string) => {
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     return data.deviceId === deviceId && Number(data.expiresAt) > Date.now();
+  } catch { return false; }
+};
+
+const createDonationDeveloperSession = () => {
+  const expiresAt = Date.now() + DEVELOPER_SESSION_MS;
+  const payload = Buffer.from(JSON.stringify({ scope: "donations-developer", expiresAt })).toString("base64url");
+  const signature = crypto.createHmac("sha256", DEVELOPER_PASSWORD).update(payload).digest("base64url");
+  return { token: `${payload}.${signature}`, expiresAt };
+};
+
+const isDonationDeveloperSession = (token: string | undefined) => {
+  const [payload, signature] = (token || "").split(".");
+  if (!payload || !signature) return false;
+  const expected = crypto.createHmac("sha256", DEVELOPER_PASSWORD).update(payload).digest("base64url");
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return false;
+  try {
+    const value = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return value.scope === "donations-developer" && Number(value.expiresAt) > Date.now();
   } catch { return false; }
 };
 
@@ -247,6 +270,18 @@ const adminAuth = async (req: express.Request, res: express.Response, next: expr
   }
 };
 
+const donationAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/, "");
+  if (isValidSession(token) || isDonationDeveloperSession(token)) return next();
+  res.status(401).json({ error: "תוקף ההתחברות פג. יש להתחבר מחדש." });
+};
+
+const donationDeveloperAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/, "");
+  if (isDonationDeveloperSession(token)) return next();
+  res.status(403).json({ error: "פעולה זו זמינה בכניסת מפתח בלבד." });
+};
+
 const developerAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const token = req.header("X-Developer-Token") || "";
   const deviceId = req.header("X-Developer-Device") || "";
@@ -335,7 +370,7 @@ app.post("/api/check-last-year", async (req, res) => {
 
 // Donation management is intentionally separated from the seating data.  All
 // of these endpoints use the existing server-side administrator session.
-app.get("/api/donations/admin/dashboard", adminAuth, async (_req, res) => {
+app.get("/api/donations/admin/dashboard", donationAdminAuth, async (_req, res) => {
   try {
     res.json(await getDonationDashboard());
   } catch (error) {
@@ -343,7 +378,7 @@ app.get("/api/donations/admin/dashboard", adminAuth, async (_req, res) => {
   }
 });
 
-app.post("/api/donations/admin/users", adminAuth, async (req, res) => {
+app.post("/api/donations/admin/users", donationAdminAuth, async (req, res) => {
   try {
     res.status(201).json(await createDonationUser(req.body || {}));
   } catch (error) {
@@ -351,7 +386,7 @@ app.post("/api/donations/admin/users", adminAuth, async (req, res) => {
   }
 });
 
-app.put("/api/donations/admin/users/:id", adminAuth, async (req, res) => {
+app.put("/api/donations/admin/users/:id", donationAdminAuth, async (req, res) => {
   try {
     res.json(await updateDonationUser(req.params.id, req.body || {}));
   } catch (error) {
@@ -359,7 +394,7 @@ app.put("/api/donations/admin/users/:id", adminAuth, async (req, res) => {
   }
 });
 
-app.delete("/api/donations/admin/users/:id", adminAuth, async (req, res) => {
+app.delete("/api/donations/admin/users/:id", donationAdminAuth, async (req, res) => {
   try {
     await deleteDonationUser(req.params.id);
     res.json({ success: true });
@@ -368,7 +403,7 @@ app.delete("/api/donations/admin/users/:id", adminAuth, async (req, res) => {
   }
 });
 
-app.post("/api/donations/admin/pledges", adminAuth, async (req, res) => {
+app.post("/api/donations/admin/pledges", donationAdminAuth, async (req, res) => {
   try {
     res.status(201).json(await createDonationPledge(req.body || {}));
   } catch (error) {
@@ -376,7 +411,7 @@ app.post("/api/donations/admin/pledges", adminAuth, async (req, res) => {
   }
 });
 
-app.post("/api/donations/admin/pledges/:id/approve", adminAuth, async (req, res) => {
+app.post("/api/donations/admin/pledges/:id/approve", donationAdminAuth, async (req, res) => {
   try {
     res.json(await approveDonationPledge(req.params.id));
   } catch (error) {
@@ -384,7 +419,7 @@ app.post("/api/donations/admin/pledges/:id/approve", adminAuth, async (req, res)
   }
 });
 
-app.post("/api/donations/admin/pledges/payment", adminAuth, async (req, res) => {
+app.post("/api/donations/admin/pledges/payment", donationAdminAuth, async (req, res) => {
   try {
     const pledgeIds = Array.isArray(req.body?.pledgeIds) ? req.body.pledgeIds.filter((item: unknown): item is string => typeof item === "string") : [];
     const paymentMethod = req.body?.paymentMethod;
@@ -395,6 +430,31 @@ app.post("/api/donations/admin/pledges/payment", adminAuth, async (req, res) => 
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "דיווח התשלום נכשל" });
   }
+});
+
+app.delete("/api/donations/developer/pledges/:id", donationDeveloperAuth, async (req, res) => {
+  try {
+    const pledge = await deleteDonationPledge(req.params.id);
+    if (pledge.receiptImage) await deleteStoredPaymentImage(pledge.receiptImage);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "מחיקת ההתחייבות נכשלה" });
+  }
+});
+
+// The donation dashboard distinguishes a developer login from an ordinary
+// manager login. Keeping this endpoint separate preserves the existing
+// seating-system login behaviour while the new system is still local-only.
+app.post("/api/donations/admin/login", async (req, res) => {
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  if (password === DEVELOPER_PASSWORD) {
+    const session = createDonationDeveloperSession();
+    return res.json({ success: true, token: session.token, expiresAt: session.expiresAt, role: "developer" });
+  }
+  const result = attemptLogin(password, req.ip || "unknown");
+  if (result.success) return res.json({ success: true, token: result.token, role: "admin" });
+  if (result.locked) return res.status(429).json({ success: false, error: "נחסמת זמנית עקב ניסיונות התחברות רבים. נסה שוב בעוד 15 דקות." });
+  res.status(401).json({ success: false, error: "סיסמה שגויה" });
 });
 
 // The client requested a phone-number-only flow for now.  The token still
@@ -695,9 +755,8 @@ app.post("/api/request", async (req, res) => {
 
 app.post("/api/admin/login", async (req, res) => {
   const password = typeof req.body?.password === "string" ? req.body.password : "";
-  // The developer password is intentionally accepted in the normal login
-  // field without any visible UI hint.  It is separate from the editable
-  // administrator password and therefore remains an emergency access route.
+  // Preserve the seating system's historic login flow. The donation system
+  // uses its own endpoint above, where the same password is developer-only.
   if (password === DEVELOPER_PASSWORD) {
     return res.json({ success: true, token: createDeveloperAdminSession() });
   }

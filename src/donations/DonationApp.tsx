@@ -6,7 +6,9 @@ import { UserDashboard } from "./components/UserDashboard";
 import type { DonationDashboardData, DonationUser, Pledge } from "./types";
 
 const ADMIN_TOKEN_KEY = "ahavat-menachem-donations-admin-token";
+const ADMIN_ROLE_KEY = "ahavat-menachem-donations-admin-role";
 const USER_TOKEN_KEY = "ahavat-menachem-donations-user-token";
+type AdminRole = "admin" | "developer";
 
 const safeToken = () => {
   try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ""; }
@@ -17,6 +19,18 @@ const saveToken = (token: string) => {
   try {
     if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
     else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch { /* Private browsing can disable session storage. */ }
+};
+
+const savedAdminRole = (): AdminRole => {
+  try { return sessionStorage.getItem(ADMIN_ROLE_KEY) === "developer" ? "developer" : "admin"; }
+  catch { return "admin"; }
+};
+
+const saveAdminRole = (role: AdminRole | null) => {
+  try {
+    if (role) sessionStorage.setItem(ADMIN_ROLE_KEY, role);
+    else sessionStorage.removeItem(ADMIN_ROLE_KEY);
   } catch { /* Private browsing can disable session storage. */ }
 };
 
@@ -41,6 +55,7 @@ const fileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
 
 export function DonationApp() {
   const [token, setToken] = useState(safeToken);
+  const [adminRole, setAdminRole] = useState<AdminRole>(savedAdminRole);
   const [data, setData] = useState<DonationDashboardData>({ users: [], pledges: [] });
   const [userToken, setUserToken] = useState(savedUserToken);
   const [userData, setUserData] = useState<{ user: DonationUser; pledges: Pledge[] } | null>(null);
@@ -74,6 +89,7 @@ export function DonationApp() {
       if (message.includes("תוקף ההתחברות")) {
         setToken("");
         saveToken("");
+        saveAdminRole(null);
       }
     } finally {
       setLoading(false);
@@ -120,15 +136,18 @@ export function DonationApp() {
   const adminLogin = async (password: string) => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/login", {
+      const response = await fetch("/api/donations/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.token) throw new Error(body.error || "סיסמת מנהל שגויה.");
+      const role: AdminRole = body.role === "developer" ? "developer" : "admin";
       saveToken(body.token);
+      saveAdminRole(role);
       setToken(body.token);
+      setAdminRole(role);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ההתחברות נכשלה");
@@ -282,7 +301,9 @@ export function DonationApp() {
         onLogout={() => {
           void fetch("/api/admin/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
           saveToken("");
+          saveAdminRole(null);
           setToken("");
+          setAdminRole("admin");
         }}
         onApprovePledge={(pledgeId) => void mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST")}
         onAddPledge={(pledge: Partial<Pledge>, name, phone) => void mutate("/api/donations/admin/pledges", "POST", {
@@ -295,6 +316,11 @@ export function DonationApp() {
         onUpdateUser={(userId, name, phone) => void mutate(`/api/donations/admin/users/${userId}`, "PUT", { name, phone })}
         onAddUser={(name, phone) => void mutate("/api/donations/admin/users", "POST", { name, phone })}
         onDeleteUser={(userId) => void mutate(`/api/donations/admin/users/${userId}`, "DELETE")}
+        isDeveloper={adminRole === "developer"}
+        onChangeAdminPassword={async (newPassword) => {
+          await request("/api/admin/change-password", { method: "POST", body: JSON.stringify({ newPassword }) });
+        }}
+        onDeletePledge={(pledgeId) => mutate(`/api/donations/developer/pledges/${pledgeId}`, "DELETE")}
       />
     </div>
   );

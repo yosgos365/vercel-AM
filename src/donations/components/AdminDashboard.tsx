@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
-import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2 } from 'lucide-react';
+import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface AdminDashboardProps {
@@ -13,15 +13,23 @@ interface AdminDashboardProps {
   onUpdateUser: (id: string, name: string, phone: string) => void;
   onAddUser: (name: string, phone: string) => void;
   onDeleteUser: (id: string) => void;
+  isDeveloper?: boolean;
+  onChangeAdminPassword?: (newPassword: string) => Promise<void> | void;
+  onDeletePledge?: (id: string) => Promise<void> | void;
 }
 
-export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onAddPledge, onUpdateUser, onAddUser, onDeleteUser }: AdminDashboardProps) {
+export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
   const [generatedReceipt, setGeneratedReceipt] = useState<string | null>(null);
   const [userModal, setUserModal] = useState<{ isOpen: boolean; mode: 'add' | 'edit'; id?: string; name: string; phone: string }>({ isOpen: false, mode: 'add', name: '', phone: '' });
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ isOpen: boolean; id: string; name: string }>({ isOpen: false, id: '', name: '' });
+  const [pledgeDeleteModal, setPledgeDeleteModal] = useState<{ isOpen: boolean; id: string; name: string; type: string }>({ isOpen: false, id: '', name: '', type: '' });
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleDownloadReceipt = async () => {
     const receiptElement = document.getElementById('receipt-content-to-download');
@@ -50,6 +58,39 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   };
 
   const pendingPledges = pledges.filter(p => p.status === 'pending');
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  };
+
+  const beginLongPress = (pledge: Pledge) => {
+    if (!isDeveloper || !onDeletePledge) return;
+    cancelLongPress();
+    const name = getUserDetails(pledge.userId)?.name || 'המתפלל';
+    longPressTimer.current = window.setTimeout(() => {
+      setPledgeDeleteModal({ isOpen: true, id: pledge.id, name, type: pledge.type });
+      longPressTimer.current = null;
+    }, 650);
+  };
+
+  const saveAdminPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!onChangeAdminPassword) return;
+    if (newAdminPassword.length < 4) {
+      setPasswordError('הסיסמה צריכה לכלול לפחות 4 תווים.');
+      return;
+    }
+    try {
+      await onChangeAdminPassword(newAdminPassword);
+      setPasswordModalOpen(false);
+      setNewAdminPassword('');
+      setPasswordError('');
+      alert('סיסמת המנהל עודכנה בהצלחה.');
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'עדכון הסיסמה נכשל.');
+    }
+  };
   
   const [newPledgeName, setNewPledgeName] = useState('');
   const [newPledgePhone, setNewPledgePhone] = useState('');
@@ -155,14 +196,23 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
               <img src="https://raw.githubusercontent.com/yosgos365/AM-Donations/main/Logo.jpeg" alt="אחוות מנחם" className="w-10 h-auto object-contain mix-blend-multiply" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-wide">ממשק ניהול גבאים</h1>
-              <p className="text-slate-300 text-sm">שלום, {user.name}</p>
+              <h1 className="text-xl font-bold text-white tracking-wide">{isDeveloper ? 'ממשק מפתח' : 'ממשק ניהול גבאים'}</h1>
+              <p className="text-slate-300 text-sm">{isDeveloper ? 'גישה לפעולות מפתח' : `שלום, ${user.name}`}</p>
             </div>
           </div>
-          <button onClick={onLogout} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors">
-            <LogOut className="w-5 h-5" />
-            <span className="hidden sm:inline text-sm font-medium">התנתק</span>
-          </button>
+          <div className="flex items-center gap-1">
+            {!isDeveloper && onChangeAdminPassword && (
+              <button onClick={() => { setPasswordModalOpen(true); setPasswordError(''); }} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors" title="שינוי סיסמת מנהל">
+                <KeyRound className="w-5 h-5" />
+                <span className="hidden sm:inline text-sm font-medium">סיסמה</span>
+              </button>
+            )}
+            {isDeveloper && <Wrench className="w-5 h-5 text-amber-300" aria-label="מצב מפתח" />}
+            <button onClick={onLogout} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors">
+              <LogOut className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">התנתק</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -371,7 +421,12 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                     {filteredPledges.map(pledge => {
                       const pledgeUser = getUserDetails(pledge.userId);
                       return (
-                        <tr key={pledge.id} className="hover:bg-slate-50/50 transition-colors">
+                        <tr key={pledge.id} className={`hover:bg-slate-50/50 transition-colors ${isDeveloper ? 'select-none' : ''}`}
+                          onPointerDown={() => beginLongPress(pledge)}
+                          onPointerUp={cancelLongPress}
+                          onPointerLeave={cancelLongPress}
+                          onPointerCancel={cancelLongPress}
+                        >
                           <td className="p-4">
                             <div className="font-bold text-slate-800">{pledgeUser?.name || 'לא ידוע'}</div>
                             <div className="text-xs text-slate-500 font-mono" dir="ltr">{pledgeUser?.phone}</div>
@@ -461,6 +516,64 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {pledgeDeleteModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-[70] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm my-8 overflow-hidden text-center">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">מחיקת התחייבות</h3>
+              <p className="text-slate-600 text-sm mb-6">
+                למחוק את ההתחייבות של <strong>{pledgeDeleteModal.name}</strong> עבור <strong>{pledgeDeleteModal.type}</strong>? פעולה זו אינה ניתנת לביטול.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setPledgeDeleteModal({ isOpen: false, id: '', name: '', type: '' })} className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition-colors w-full">ביטול</button>
+                <button
+                  onClick={async () => {
+                    await onDeletePledge?.(pledgeDeleteModal.id);
+                    setPledgeDeleteModal({ isOpen: false, id: '', name: '', type: '' });
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg shadow hover:bg-red-700 transition-colors w-full"
+                >
+                  מחק התחייבות
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {passwordModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-[70] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm my-8 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800">שינוי סיסמת מנהל</h3>
+              <button onClick={() => setPasswordModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors font-bold">&times;</button>
+            </div>
+            <form onSubmit={saveAdminPassword} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">סיסמה חדשה</label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={newAdminPassword}
+                  onChange={(event) => { setNewAdminPassword(event.target.value); setPasswordError(''); }}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  autoComplete="new-password"
+                />
+                {passwordError && <p className="mt-2 text-sm text-red-600">{passwordError}</p>}
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={() => setPasswordModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition-colors">ביטול</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow hover:bg-indigo-700 transition-colors">שמור סיסמה</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
