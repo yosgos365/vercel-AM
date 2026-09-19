@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
-import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map } from 'lucide-react';
+import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface AdminDashboardProps {
@@ -201,12 +201,6 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {!isDeveloper && (
-              <a href="/admin/dashboard" className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors" title="עריכת מפת השיבוץ">
-                <Map className="w-5 h-5" />
-                <span className="hidden sm:inline text-sm font-medium">מפה</span>
-              </a>
-            )}
             {!isDeveloper && onChangeAdminPassword && (
               <button onClick={() => { setPasswordModalOpen(true); setPasswordError(''); }} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors" title="שינוי סיסמת מנהל">
                 <KeyRound className="w-5 h-5" />

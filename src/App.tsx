@@ -13,7 +13,6 @@ import { AdminDashboard } from "./pages/AdminDashboard";
 import { AdminLogin } from "./pages/AdminLogin";
 import { useStore } from "./store";
 import { DonationApp } from "./donations/DonationApp";
-import { DonationsSeatingView } from "./donations/DonationsSeatingView";
 
 function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
   const isAdminAuth = useStore((state) => state.isAdminAuth);
@@ -43,7 +42,6 @@ export default function App() {
           </Route>
         </Route>
         <Route path="/donations" element={<DonationApp />} />
-        <Route path="/donations/seating" element={<DonationsSeatingView />} />
       </Routes>
     </BrowserRouter>
   );
