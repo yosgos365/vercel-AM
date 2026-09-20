@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
 import { SEATS } from '../../MapData';
-import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench } from 'lucide-react';
+import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface AdminDashboardProps {
@@ -271,7 +271,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 activeTab === 'seating' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-700'
               }`}
             >
-              <Map className="w-4 h-4" />
+              <MapIcon className="w-4 h-4" />
               עריכת שיבוץ
             </button>
           )}
