@@ -12,7 +12,14 @@ interface PublicSeat extends SeatStatus {
   pendingNames: string[];
 }
 
-export function Home({ initialViewMode = false, lockViewMode = false }: { initialViewMode?: boolean; lockViewMode?: boolean }) {
+interface HomeProps {
+  initialViewMode?: boolean;
+  lockViewMode?: boolean;
+  editableSeats?: Record<string, { status: "available" | "pending" | "taken"; owner?: string }>;
+  onSeatClick?: (seatId: string) => void;
+}
+
+export function Home({ initialViewMode = false, lockViewMode = false, editableSeats, onSeatClick }: HomeProps) {
   const [seatStatuses, setSeatStatuses] = useState<Record<string, SeatStatus>>({});
   const [publicSeats, setPublicSeats] = useState<Record<string, PublicSeat>>({});
   const [loading, setLoading] = useState(true);
@@ -75,7 +82,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
               className={clsx("public-seat-map inline-grid gap-1.5 mx-auto p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm relative", viewMode && "public-seating-map")}
               style={{
                 gridTemplateColumns: `repeat(${MAX_COLS}, ${viewMode ? 58 : 38}px)`,
-                gridTemplateRows: `repeat(${MAX_ROWS}, ${viewMode ? 64 : 26}px)`,
+                gridTemplateRows: `repeat(${MAX_ROWS}, ${viewMode ? 68 : 26}px)`,
               }}
             >
               {/* Static Elements */}
@@ -93,17 +100,22 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
               </div>
 
               {SEATS.map((seat) => {
-                const status = seatStatuses[seat.id]?.status || "available";
+                const editedSeat = editableSeats?.[seat.id];
+                const status = editedSeat?.status || seatStatuses[seat.id]?.status || "available";
                 const publicSeat = publicSeats[seat.id];
-                const publicStatus = publicSeat?.status || status;
-                const names = Array.from(new Set(publicStatus === "taken" ? publicSeat?.approvedNames || [] : publicSeat?.pendingNames || []));
+                const publicStatus = editedSeat?.status || publicSeat?.status || status;
+                const names = editedSeat?.owner ? [editedSeat.owner] : Array.from(new Set(publicStatus === "taken" ? publicSeat?.approvedNames || [] : publicSeat?.pendingNames || []));
                 const pendingNames = Array.from(new Set(publicSeat?.pendingNames || [])).filter((name) => !names.includes(name));
                 
                 return (
-                  <div
+                  <button
                     key={seat.id}
+                    type="button"
+                    onClick={() => onSeatClick?.(seat.id)}
+                    disabled={!onSeatClick}
                     className={clsx(
                       viewMode ? "flex min-h-0 flex-col items-center justify-center overflow-hidden rounded-md border px-1 text-center shadow-sm z-10 relative" : "flex items-center justify-center text-xs font-medium rounded-full shadow-sm border transition-colors z-10 relative",
+                      onSeatClick && "cursor-pointer hover:ring-2 hover:ring-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500",
                       !viewMode && status === "available" && "bg-emerald-50 text-emerald-700 border-emerald-200",
                       !viewMode && status === "pending" && "bg-amber-50 text-amber-700 border-amber-200",
                       !viewMode && status === "taken" && "bg-rose-200 text-rose-900 border-rose-500 ring-1 ring-rose-300",
@@ -125,7 +137,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
                             style={{
                               display: "-webkit-box",
                               WebkitBoxOrient: "vertical",
-                              WebkitLineClamp: 4,
+                              WebkitLineClamp: 5,
                               overflowWrap: "normal",
                               wordBreak: "normal",
                             }}
@@ -151,7 +163,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
                         <span className="text-sm font-semibold text-slate-500">{seat.label}</span>
                       )
                     ) : seat.label}
-                  </div>
+                  </button>
                 );
               })}
             </div>

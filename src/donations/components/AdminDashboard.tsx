@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
-import { SEATS } from '../../MapData';
+import { Home } from '../../pages/Home';
 import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -310,19 +310,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 <h2 className="text-2xl font-bold text-slate-800">עריכת שיבוץ המקומות</h2>
                 <p className="mt-1 text-sm text-slate-500">השמות כאן מוצגים ללקוחות במפת השיבוץ. השארת השם ריק תפנה את המושב.</p>
               </div>
-              <p className="mb-3 text-xs font-medium text-slate-500">לחצו על מושב כדי לערוך את השם המופיע עליו.</p>
-              <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="grid min-w-[1680px] gap-1.5" style={{ gridTemplateColumns: 'repeat(34, 48px)', gridTemplateRows: 'repeat(16, 48px)' }}>
-                  {SEATS.map((seat) => {
-                    const current = seating[seat.id];
-                    const status = current?.status || 'available';
-                    const owner = current?.owner || '';
-                    return <button key={seat.id} type="button" onClick={() => setSelectedSeat({ id: seat.id, owner, status })} style={{ gridColumn: seat.col + 1, gridRow: seat.row + 1 }} className={`min-w-0 rounded-md border px-1 text-center text-xs font-bold leading-tight shadow-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${status === 'taken' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : status === 'pending' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-slate-300 bg-white text-slate-500'}`} title={`${seat.id}${owner ? ` — ${owner}` : ' — פנוי'}`}>
-                      <span className="block max-h-10 overflow-hidden break-words">{owner || 'פנוי'}</span>
-                    </button>;
-                  })}
-                </div>
-              </div>
+              <Home initialViewMode lockViewMode editableSeats={seating} onSeatClick={(seatId) => { const current = seating[seatId]; setSelectedSeat({ id: seatId, owner: current?.owner || '', status: current?.status || 'available' }); }} />
               {selectedSeat && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onMouseDown={() => setSelectedSeat(null)}>
                 <form onMouseDown={(event) => event.stopPropagation()} onSubmit={async (event) => { event.preventDefault(); setSavingSeat(selectedSeat.id); try { await onUpdateSeat(selectedSeat.id, selectedSeat.owner.trim()); setSelectedSeat(null); } finally { setSavingSeat(null); } }} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
                   <div className="mb-5 flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold text-slate-800">עריכת מושב <span dir="ltr">{selectedSeat.id}</span></h3><p className="mt-1 text-sm text-slate-500">השם שיישמר יוצג גם במפת הלקוחות.</p></div><button type="button" onClick={() => setSelectedSeat(null)} className="text-slate-400 hover:text-slate-700">סגירה</button></div>
