@@ -263,7 +263,9 @@ async function migrateLegacyPaymentImages() {
 const adminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.replace(/^Bearer\s+/, "");
-  if (isValidSession(token)) {
+  // A donation developer is also a full manager. Its only extra permission is
+  // the developer-only deletion route below.
+  if (isValidSession(token) || isDonationDeveloperSession(token)) {
     next();
   } else {
     res.status(401).json({ error: "תוקף ההתחברות פג. יש להתחבר מחדש." });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Pledge } from '../types';
-import { LogOut, FileText, Check, Clock, ChevronLeft, CreditCard, Download, CheckCircle2, Printer } from 'lucide-react';
+import { LogOut, FileText, Check, Clock, ChevronLeft, CreditCard, Download, CheckCircle2, Printer, Eye } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { PaymentModal } from './PaymentModal';
 import { Settings, Plus, Trash2 } from 'lucide-react';
@@ -177,6 +177,10 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
               <Settings className="w-5 h-5" />
               <span className="hidden sm:inline text-sm font-medium">הגדרות</span>
             </button>
+            <a href="/donations/seating" className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
+              <Eye className="w-5 h-5" />
+              <span className="hidden sm:inline text-sm font-medium">צפייה בשיבוץ</span>
+            </a>
             <button onClick={onLogout} className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
               <LogOut className="w-5 h-5" />
               <span className="hidden sm:inline text-sm font-medium">התנתק</span>

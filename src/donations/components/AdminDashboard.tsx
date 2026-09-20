@@ -206,7 +206,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {!isDeveloper && onChangeAdminPassword && (
+            {onChangeAdminPassword && (
               <button onClick={() => { setPasswordModalOpen(true); setPasswordError(''); }} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors" title="שינוי סיסמת מנהל">
                 <KeyRound className="w-5 h-5" />
                 <span className="hidden sm:inline text-sm font-medium">סיסמה</span>
@@ -264,7 +264,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
             <Contact className="w-4 h-4" />
             מתפללים
           </button>
-          {!isDeveloper && onUpdateSeat && (
+          {onUpdateSeat && (
             <button
               onClick={() => setActiveTab('seating')}
               className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 rounded-md whitespace-nowrap ${

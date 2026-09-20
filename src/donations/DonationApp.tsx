@@ -101,7 +101,7 @@ export function DonationApp() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const refreshSeating = useCallback(async () => {
-    if (!token || adminRole !== "admin") return;
+    if (!token || !adminRole) return;
     try {
       const dashboard = await request("/api/admin/dashboard");
       setSeating(dashboard.seats || {});
@@ -336,7 +336,7 @@ export function DonationApp() {
         }}
         onDeletePledge={(pledgeId) => mutate(`/api/donations/developer/pledges/${pledgeId}`, "DELETE")}
         seating={seating}
-        onUpdateSeat={adminRole === "admin" ? async (seatId, owner) => {
+        onUpdateSeat={adminRole ? async (seatId, owner) => {
           await request(`/api/admin/seat/${seatId}`, {
             method: "POST",
             body: JSON.stringify({ status: owner ? "taken" : "available", owner }),
