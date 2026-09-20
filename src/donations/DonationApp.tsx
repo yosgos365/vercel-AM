@@ -9,6 +9,7 @@ const ADMIN_TOKEN_KEY = "ahavat-menachem-donations-admin-token";
 const ADMIN_ROLE_KEY = "ahavat-menachem-donations-admin-role";
 const USER_TOKEN_KEY = "ahavat-menachem-donations-user-token";
 type AdminRole = "admin" | "developer";
+type SeatingState = Record<string, { status: "available" | "pending" | "taken"; owner?: string }>;
 
 const safeToken = () => {
   try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ""; }
@@ -57,6 +58,7 @@ export function DonationApp() {
   const [token, setToken] = useState(safeToken);
   const [adminRole, setAdminRole] = useState<AdminRole>(savedAdminRole);
   const [data, setData] = useState<DonationDashboardData>({ users: [], pledges: [] });
+  const [seating, setSeating] = useState<SeatingState>({});
   const [userToken, setUserToken] = useState(savedUserToken);
   const [userData, setUserData] = useState<{ user: DonationUser; pledges: Pledge[] } | null>(null);
   const [registeringPhone, setRegisteringPhone] = useState<string | null>(null);
@@ -97,6 +99,18 @@ export function DonationApp() {
   }, [request, token]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const refreshSeating = useCallback(async () => {
+    if (!token || adminRole !== "admin") return;
+    try {
+      const dashboard = await request("/api/admin/dashboard");
+      setSeating(dashboard.seats || {});
+    } catch (cause) {
+      console.error("טעינת השיבוץ נכשלה", cause);
+    }
+  }, [adminRole, request, token]);
+
+  useEffect(() => { void refreshSeating(); }, [refreshSeating]);
 
   const userRequest = useCallback(async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, {
@@ -321,6 +335,14 @@ export function DonationApp() {
           await request("/api/admin/change-password", { method: "POST", body: JSON.stringify({ newPassword }) });
         }}
         onDeletePledge={(pledgeId) => mutate(`/api/donations/developer/pledges/${pledgeId}`, "DELETE")}
+        seating={seating}
+        onUpdateSeat={adminRole === "admin" ? async (seatId, owner) => {
+          await request(`/api/admin/seat/${seatId}`, {
+            method: "POST",
+            body: JSON.stringify({ status: owner ? "taken" : "available", owner }),
+          });
+          await refreshSeating();
+        } : undefined}
       />
     </div>
   );

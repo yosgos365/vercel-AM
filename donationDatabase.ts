@@ -24,9 +24,10 @@ async function donationFirestore() {
       const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || await fs.readFile(keyPath, "utf8");
       initializeApp({ credential: cert(JSON.parse(raw)) });
     }
-    const firestore = getFirestore();
-    firestore.settings({ ignoreUndefinedProperties: true });
-    return firestore;
+    // The seating database may already have obtained this shared Admin SDK
+    // Firestore instance. Calling settings() again after that first use makes
+    // the local server crash, so keep this module configuration-free.
+    return getFirestore();
   })();
   return firestorePromise;
 }

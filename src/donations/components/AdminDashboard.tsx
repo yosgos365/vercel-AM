@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
+import { SEATS } from '../../MapData';
 import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -16,10 +17,12 @@ interface AdminDashboardProps {
   isDeveloper?: boolean;
   onChangeAdminPassword?: (newPassword: string) => Promise<void> | void;
   onDeletePledge?: (id: string) => Promise<void> | void;
+  seating?: Record<string, { status: "available" | "pending" | "taken"; owner?: string }>;
+  onUpdateSeat?: (seatId: string, owner: string) => Promise<void> | void;
 }
 
-export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users'>('pending');
+export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users' | 'seating'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
   const [generatedReceipt, setGeneratedReceipt] = useState<string | null>(null);
@@ -29,6 +32,8 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [seatEdits, setSeatEdits] = useState<Record<string, string>>({});
+  const [savingSeat, setSavingSeat] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleDownloadReceipt = async () => {
@@ -259,6 +264,17 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
             <Contact className="w-4 h-4" />
             מתפללים
           </button>
+          {!isDeveloper && onUpdateSeat && (
+            <button
+              onClick={() => setActiveTab('seating')}
+              className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 rounded-md whitespace-nowrap ${
+                activeTab === 'seating' ? 'bg-stone-100 text-stone-900' : 'text-stone-500 hover:text-stone-700'
+              }`}
+            >
+              <Map className="w-4 h-4" />
+              עריכת שיבוץ
+            </button>
+          )}
         </div>
 
         {(activeTab === 'all' || activeTab === 'pending' || activeTab === 'users') && (
@@ -288,7 +304,32 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
 
         <div className="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
           
-          {activeTab === 'add' ? (
+          {activeTab === 'seating' ? (
+            <div className="p-4 sm:p-6">
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-slate-800">עריכת שיבוץ המקומות</h2>
+                <p className="mt-1 text-sm text-slate-500">השמות כאן מוצגים ללקוחות במפת השיבוץ. השארת השם ריק תפנה את המושב.</p>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-[650px] text-right">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-sm font-medium"><tr><th className="p-3 w-28">מושב</th><th className="p-3 w-36">סטטוס</th><th className="p-3">שם בשיבוץ</th><th className="p-3 w-28">פעולה</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[...SEATS].sort((a, b) => a.id.localeCompare(b.id, 'en')).map((seat) => {
+                      const current = seating[seat.id];
+                      const owner = seatEdits[seat.id] ?? current?.owner ?? '';
+                      const status = current?.status || 'available';
+                      return <tr key={seat.id} className="hover:bg-slate-50/50">
+                        <td className="p-3 font-mono font-bold text-slate-700" dir="ltr">{seat.id}</td>
+                        <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${status === 'taken' ? 'bg-emerald-100 text-emerald-700' : status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{status === 'taken' ? 'מאושר' : status === 'pending' ? 'ממתין' : 'פנוי'}</span></td>
+                        <td className="p-2"><input value={owner} onChange={(event) => setSeatEdits((currentEdits) => ({ ...currentEdits, [seat.id]: event.target.value }))} placeholder="מושב פנוי" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" /></td>
+                        <td className="p-2"><button disabled={savingSeat === seat.id} onClick={async () => { setSavingSeat(seat.id); try { await onUpdateSeat(seat.id, owner.trim()); setSeatEdits((currentEdits) => { const next = { ...currentEdits }; delete next[seat.id]; return next; }); } finally { setSavingSeat(null); } }} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60">{savingSeat === seat.id ? 'שומר...' : 'שמור'}</button></td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === 'add' ? (
             <div className="p-8 max-w-2xl mx-auto">
               <h2 className="text-2xl font-bold text-slate-800 mb-6 border-b border-slate-100 pb-4">רישום התחייבות / אורח חדש</h2>
               <form onSubmit={handleAddSubmit} className="space-y-5">

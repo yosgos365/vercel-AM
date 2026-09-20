@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
@@ -109,6 +110,12 @@ const productionLoginAttempts = new Map<string, number[]>();
 // shared Firestore state, even if an environment variable was omitted.
 const useFirestore = () =>
   process.env.USE_FIRESTORE === "true" ||
+  // A local preview with the project's service-account file must use the
+  // shared production data as well. Otherwise it silently opens a separate
+  // SQLite database and the seating map is misleading.
+  Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON) ||
+  Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_PATH) ||
+  existsSync(path.join(process.cwd(), "firebase-service-account.json")) ||
   process.env.NETLIFY === "true" ||
   process.env.VERCEL === "1" ||
   // Vercel's function filesystem is mounted under /var/task and is read-only.
