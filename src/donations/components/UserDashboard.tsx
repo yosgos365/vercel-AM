@@ -486,7 +486,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
               </>
             )}
           </div>
-        ) : (
+        ) : activeTab === 'history' ? (
           <div className="space-y-4">
             {historyPledges.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -526,7 +526,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
               ))
             )}
           </div>
-        )}
+        ) : null}
       </main>
 
       {/* Floating Action Bar */}

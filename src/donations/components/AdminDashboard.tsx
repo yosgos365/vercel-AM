@@ -32,7 +32,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [seatEdits, setSeatEdits] = useState<Record<string, string>>({});
+  const [selectedSeat, setSelectedSeat] = useState<{ id: string; owner: string; status: "available" | "pending" | "taken" } | null>(null);
   const [savingSeat, setSavingSeat] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -310,24 +310,28 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 <h2 className="text-2xl font-bold text-slate-800">עריכת שיבוץ המקומות</h2>
                 <p className="mt-1 text-sm text-slate-500">השמות כאן מוצגים ללקוחות במפת השיבוץ. השארת השם ריק תפנה את המושב.</p>
               </div>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[650px] text-right">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-sm font-medium"><tr><th className="p-3 w-28">מושב</th><th className="p-3 w-36">סטטוס</th><th className="p-3">שם בשיבוץ</th><th className="p-3 w-28">פעולה</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[...SEATS].sort((a, b) => a.id.localeCompare(b.id, 'en')).map((seat) => {
-                      const current = seating[seat.id];
-                      const owner = seatEdits[seat.id] ?? current?.owner ?? '';
-                      const status = current?.status || 'available';
-                      return <tr key={seat.id} className="hover:bg-slate-50/50">
-                        <td className="p-3 font-mono font-bold text-slate-700" dir="ltr">{seat.id}</td>
-                        <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${status === 'taken' ? 'bg-emerald-100 text-emerald-700' : status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{status === 'taken' ? 'מאושר' : status === 'pending' ? 'ממתין' : 'פנוי'}</span></td>
-                        <td className="p-2"><input value={owner} onChange={(event) => setSeatEdits((currentEdits) => ({ ...currentEdits, [seat.id]: event.target.value }))} placeholder="מושב פנוי" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" /></td>
-                        <td className="p-2"><button disabled={savingSeat === seat.id} onClick={async () => { setSavingSeat(seat.id); try { await onUpdateSeat(seat.id, owner.trim()); setSeatEdits((currentEdits) => { const next = { ...currentEdits }; delete next[seat.id]; return next; }); } finally { setSavingSeat(null); } }} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60">{savingSeat === seat.id ? 'שומר...' : 'שמור'}</button></td>
-                      </tr>;
-                    })}
-                  </tbody>
-                </table>
+              <p className="mb-3 text-xs font-medium text-slate-500">לחצו על מושב כדי לערוך את השם המופיע עליו. ירוק — מאושר, צהוב — ממתין, לבן — פנוי.</p>
+              <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="grid min-w-[1680px] gap-1.5" style={{ gridTemplateColumns: 'repeat(34, 48px)', gridTemplateRows: 'repeat(16, 48px)' }}>
+                  {SEATS.map((seat) => {
+                    const current = seating[seat.id];
+                    const status = current?.status || 'available';
+                    const owner = current?.owner || '';
+                    return <button key={seat.id} type="button" onClick={() => setSelectedSeat({ id: seat.id, owner, status })} style={{ gridColumn: seat.col + 1, gridRow: seat.row + 1 }} className={`min-w-0 rounded-md border px-1 text-center text-xs font-bold leading-tight shadow-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${status === 'taken' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : status === 'pending' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-slate-300 bg-white text-slate-500'}`} title={`${seat.id}${owner ? ` — ${owner}` : ' — פנוי'}`}>
+                      <span className="block font-mono text-[10px] opacity-70" dir="ltr">{seat.id}</span>
+                      <span className="block max-h-8 overflow-hidden break-words">{owner || 'פנוי'}</span>
+                    </button>;
+                  })}
+                </div>
               </div>
+              {selectedSeat && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onMouseDown={() => setSelectedSeat(null)}>
+                <form onMouseDown={(event) => event.stopPropagation()} onSubmit={async (event) => { event.preventDefault(); setSavingSeat(selectedSeat.id); try { await onUpdateSeat(selectedSeat.id, selectedSeat.owner.trim()); setSelectedSeat(null); } finally { setSavingSeat(null); } }} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                  <div className="mb-5 flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold text-slate-800">עריכת מושב <span dir="ltr">{selectedSeat.id}</span></h3><p className="mt-1 text-sm text-slate-500">השם שיישמר יוצג גם במפת הלקוחות.</p></div><button type="button" onClick={() => setSelectedSeat(null)} className="text-slate-400 hover:text-slate-700">סגירה</button></div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">שם בשיבוץ</label>
+                  <input autoFocus value={selectedSeat.owner} onChange={(event) => setSelectedSeat({ ...selectedSeat, owner: event.target.value })} placeholder="השאירו ריק כדי לפנות את המושב" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                  <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setSelectedSeat(null)} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">ביטול</button><button disabled={savingSeat === selectedSeat.id} type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60">{savingSeat === selectedSeat.id ? 'שומר...' : 'שמור'}</button></div>
+                </form>
+              </div>}
             </div>
           ) : activeTab === 'add' ? (
             <div className="p-8 max-w-2xl mx-auto">
