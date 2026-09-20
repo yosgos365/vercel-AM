@@ -9,7 +9,7 @@ interface AdminDashboardProps {
   users: User[];
   pledges: Pledge[];
   onLogout: () => void;
-  onApprovePledge: (id: string) => void;
+  onApprovePledge: (id: string, approvalNote: string) => void;
   onAddPledge: (pledgeData: Partial<Pledge>, userName: string, phone: string) => void;
   onUpdateUser: (id: string, name: string, phone: string) => void;
   onAddUser: (name: string, phone: string) => void;
@@ -32,6 +32,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [approvalModal, setApprovalModal] = useState<{ isOpen: boolean; id: string; note: string }>({ isOpen: false, id: '', note: '' });
   const [selectedSeat, setSelectedSeat] = useState<{ id: string; owner: string; status: "available" | "pending" | "taken" } | null>(null);
   const [savingSeat, setSavingSeat] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,7 +129,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   };
   
   const handleExportCSV = () => {
-    const headers = ['שם מתפלל', 'טלפון', 'סוג התחייבות/תרומה', 'סכום', 'תאריך', 'סטטוס', 'אמצעי תשלום'];
+    const headers = ['שם מתפלל', 'טלפון', 'סוג התחייבות/תרומה', 'סכום', 'תאריך', 'סטטוס', 'אמצעי תשלום', 'הערת גבאי'];
     
     const rows = filteredPledges.map(p => {
       const u = getUserDetails(p.userId);
@@ -142,7 +143,8 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
         p.amount.toString(),
         new Date(p.date).toLocaleDateString('he-IL'),
         statusStr,
-        paymentMethodStr
+        paymentMethodStr,
+        p.approvalNote || ''
       ].map(field => `"${field}"`).join(',');
     });
     
@@ -155,6 +157,20 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportUsersCSV = () => {
+    const headers = ['שם מתפלל', 'טלפון', 'תאריך הצטרפות'];
+    const rows = filteredUsers.map((user) => [user.name, user.phone, new Date(user.createdAt).toLocaleDateString('he-IL')].map((field) => `"${String(field).replace(/"/g, '""')}"`).join(','));
+    const blob = new Blob(['\uFEFF' + [headers.map((header) => `"${header}"`).join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `רשימת_מתפללים_${new Date().toLocaleDateString('he-IL').replace(/\//g, '-')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -191,6 +207,8 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
     }
     return true;
   }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const filteredUsers = users.filter((item) => item.role !== 'admin' && (!searchTerm || item.name.includes(searchTerm) || item.phone.includes(searchTerm)));
 
   return (
     <div className="min-h-screen bg-stone-100 pb-12">
@@ -290,7 +308,9 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
               />
             </div>
             
-            {activeTab !== 'users' && (
+            {activeTab === 'users' ? (
+              <button onClick={handleExportUsersCSV} className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא מתפללים לאקסל</button>
+            ) : (
               <button 
                 onClick={handleExportCSV}
                 className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"
@@ -399,7 +419,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   הוסף מתפלל חדש
                 </button>
               </div>
-              {users.filter(u => u.role !== 'admin' && (searchTerm ? u.name.includes(searchTerm) || u.phone.includes(searchTerm) : true)).length === 0 ? (
+              {filteredUsers.length === 0 ? (
                 <div className="text-center py-12 text-slate-500">
                   לא נמצאו מתפללים.
                 </div>
@@ -413,7 +433,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {users.filter(u => u.role !== 'admin' && (searchTerm ? u.name.includes(searchTerm) || u.phone.includes(searchTerm) : true)).map(u => (
+                    {filteredUsers.map(u => (
                       <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-4 font-bold text-slate-800">{u.name}</td>
                         <td className="p-4 font-mono text-slate-600" dir="ltr">{u.phone}</td>
@@ -446,6 +466,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                       <th className="p-4">סכום</th>
                       <th className="p-4">תאריך</th>
                       <th className="p-4">סטטוס</th>
+                      <th className="p-4">הערת גבאי</th>
                       <th className="p-4">פעולות</th>
                     </tr>
                   </thead>
@@ -476,6 +497,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                                pledge.status === 'pending' ? 'ממתין לאישור' : 'שולם'}
                             </span>
                           </td>
+                          <td className="p-4 text-sm text-slate-600">{pledge.approvalNote || '—'}</td>
                           <td className="p-4">
                             {pledge.status === 'pending' && (
                               <div className="flex gap-2">
@@ -487,7 +509,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                                   צפה באסמכתא
                                 </button>
                                 <button
-                                  onClick={() => onApprovePledge(pledge.id)}
+                                  onClick={() => setApprovalModal({ isOpen: true, id: pledge.id, note: '' })}
                                   className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition-colors shadow-sm"
                                 >
                                   <CheckCircle2 className="w-4 h-4" />
@@ -516,6 +538,16 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
         </div>
       </main>
 
+      {approvalModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+          <form onSubmit={(event) => { event.preventDefault(); onApprovePledge(approvalModal.id, approvalModal.note.trim()); setApprovalModal({ isOpen: false, id: '', note: '' }); }} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-900">אישור תשלום</h3>
+            <p className="mt-1 text-sm text-slate-600">אפשר להוסיף הערה שתישמר לצד התשלום.</p>
+            <textarea autoFocus value={approvalModal.note} onChange={(event) => setApprovalModal({ ...approvalModal, note: event.target.value })} maxLength={500} rows={4} placeholder="הערה לגבאי, למשל: נבדקה אסמכתא" className="mt-4 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600" />
+            <div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setApprovalModal({ isOpen: false, id: '', note: '' })} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">ביטול</button><button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">אשר תשלום</button></div>
+          </form>
+        </div>
+      )}
       
       
       {/* Delete Confirm Modal */}

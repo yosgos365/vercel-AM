@@ -415,7 +415,8 @@ app.post("/api/donations/admin/pledges", donationAdminAuth, async (req, res) => 
 
 app.post("/api/donations/admin/pledges/:id/approve", donationAdminAuth, async (req, res) => {
   try {
-    res.json(await approveDonationPledge(req.params.id));
+    const approvalNote = typeof req.body?.approvalNote === "string" ? req.body.approvalNote.trim().slice(0, 500) : "";
+    res.json(await approveDonationPledge(req.params.id, approvalNote));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "אישור ההתחייבות נכשל" });
   }

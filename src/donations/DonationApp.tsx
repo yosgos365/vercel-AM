@@ -319,7 +319,7 @@ export function DonationApp() {
           setToken("");
           setAdminRole("admin");
         }}
-        onApprovePledge={(pledgeId) => void mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST")}
+        onApprovePledge={(pledgeId, approvalNote) => void mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST", { approvalNote })}
         onAddPledge={(pledge: Partial<Pledge>, name, phone) => void mutate("/api/donations/admin/pledges", "POST", {
           name,
           phone,

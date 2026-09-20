@@ -56,6 +56,7 @@ const pledgeFromData = (documentId: string, data: Record<string, unknown>): Pled
   paidAt: asString(data.paidAt) || undefined,
   approvedAt: asString(data.approvedAt) || undefined,
   receiptNumber: asString(data.receiptNumber) || undefined,
+  approvalNote: asString(data.approvalNote) || undefined,
   createdAt: asTime(data.createdAt),
   updatedAt: asTime(data.updatedAt),
 });
@@ -202,7 +203,7 @@ export async function markDonationPayment(pledgeIds: string[], paymentMethod: Pa
   await batch.commit();
 }
 
-export async function approveDonationPledge(pledgeId: string): Promise<Pledge> {
+export async function approveDonationPledge(pledgeId: string, approvalNote = ""): Promise<Pledge> {
   const db = await donationFirestore();
   const reference = db.collection(PLEDGES).doc(pledgeId);
   let approved: Pledge | null = null;
@@ -215,8 +216,8 @@ export async function approveDonationPledge(pledgeId: string): Promise<Pledge> {
     const settingsSnapshot = await transaction.get(settings);
     const nextNumber = Number(settingsSnapshot.data()?.lastNumber || 10000) + 1;
     const approvedAt = new Date().toISOString();
-    approved = { ...pledge, status: "paid", approvedAt, receiptNumber: String(nextNumber), updatedAt: Date.now() };
-    transaction.update(reference, { status: "paid", approvedAt, receiptNumber: String(nextNumber), updatedAt: approved.updatedAt });
+    approved = { ...pledge, status: "paid", approvedAt, receiptNumber: String(nextNumber), approvalNote: approvalNote || undefined, updatedAt: Date.now() };
+    transaction.update(reference, { status: "paid", approvedAt, receiptNumber: String(nextNumber), approvalNote: approvalNote || FieldValue.delete(), updatedAt: approved.updatedAt });
     transaction.set(settings, { lastNumber: nextNumber, updatedAt: Date.now() }, { merge: true });
   });
   return approved!;
