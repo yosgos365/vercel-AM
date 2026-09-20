@@ -74,8 +74,8 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
             <div 
               className={clsx("public-seat-map inline-grid gap-1.5 mx-auto p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm relative", viewMode && "public-seating-map")}
               style={{
-                gridTemplateColumns: `repeat(${MAX_COLS}, ${viewMode ? 78 : 38}px)`,
-                gridTemplateRows: `repeat(${MAX_ROWS}, ${viewMode ? 74 : 26}px)`,
+                gridTemplateColumns: `repeat(${MAX_COLS}, ${viewMode ? 58 : 38}px)`,
+                gridTemplateRows: `repeat(${MAX_ROWS}, ${viewMode ? 64 : 26}px)`,
               }}
             >
               {/* Static Elements */}
@@ -84,7 +84,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
               <div style={{ gridRow: '1 / 2', gridColumn: '14 / 18' }} className="bg-indigo-100 border border-indigo-200 flex items-center justify-center text-sm font-bold text-indigo-900 shadow-sm z-0">
                 ארון קודש
               </div>
-              <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: viewMode ? '230px' : '126px', justifySelf: 'start' }} className="bg-indigo-50/80 border border-indigo-200/50 flex items-center justify-center text-sm font-bold text-indigo-800 shadow-sm z-20">
+              <div style={{ gridRow: '5 / 8', gridColumn: '14 / 17', width: viewMode ? '175px' : '126px', justifySelf: 'start' }} className="bg-indigo-50/80 border border-indigo-200/50 flex items-center justify-center text-sm font-bold text-indigo-800 shadow-sm z-20">
                 בימה
               </div>
               
@@ -96,7 +96,8 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
                 const status = seatStatuses[seat.id]?.status || "available";
                 const publicSeat = publicSeats[seat.id];
                 const publicStatus = publicSeat?.status || status;
-                const names = publicStatus === "taken" ? publicSeat?.approvedNames || [] : publicSeat?.pendingNames || [];
+                const names = Array.from(new Set(publicStatus === "taken" ? publicSeat?.approvedNames || [] : publicSeat?.pendingNames || []));
+                const pendingNames = Array.from(new Set(publicSeat?.pendingNames || [])).filter((name) => !names.includes(name));
                 
                 return (
                   <div
@@ -120,7 +121,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
                       names.length > 0 ? (
                         <>
                           <span
-                            className="max-w-full overflow-hidden px-0.5 text-[12px] font-bold leading-[1.2] sm:text-[13px]"
+                            className="max-w-full overflow-hidden px-0.5 text-[11px] font-bold leading-[1.18] sm:text-[12px]"
                             style={{
                               display: "-webkit-box",
                               WebkitBoxOrient: "vertical",
@@ -131,7 +132,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
                           >
                             {names.join(" · ")}
                           </span>
-                          {publicStatus === "taken" && publicSeat?.pendingNames.length ? (
+                          {publicStatus === "taken" && pendingNames.length ? (
                             <span
                               className="mt-1 max-w-full overflow-hidden px-0.5 text-[9px] font-medium leading-tight text-amber-800"
                               style={{
@@ -142,7 +143,7 @@ export function Home({ initialViewMode = false, lockViewMode = false }: { initia
                               wordBreak: "normal",
                               }}
                             >
-                              ממתין: {publicSeat.pendingNames.join(" · ")}
+                              ממתין: {pendingNames.join(" · ")}
                             </span>
                           ) : null}
                         </>
