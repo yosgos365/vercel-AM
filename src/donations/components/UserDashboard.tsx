@@ -167,20 +167,21 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
           <div className="flex items-center gap-2">
             <img src="https://raw.githubusercontent.com/yosgos365/AM-Donations/main/Logo_no_text.jpeg" alt="אחוות מנחם" className="h-12 w-auto object-contain mix-blend-multiply" />
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-left hidden sm:block">
-              <h1 className="text-sm font-bold text-stone-800">שלום, {user.name}</h1>
-              <p className="text-xs text-stone-500">האזור האישי שלך</p>
+          <div className="mr-5 flex flex-1 items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden sm:block">
+                <h1 className="text-sm font-bold text-stone-800">שלום, {user.name}</h1>
+                <p className="text-xs text-stone-500">האזור האישי שלך</p>
+              </div>
+              <button onClick={() => setActiveTab('settings')} className={`flex items-center gap-1 p-2 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'}`}>
+                <Settings className="w-5 h-5" />
+                <span className="hidden sm:inline text-sm font-medium">הגדרות</span>
+              </button>
+              <a href="/donations/seating" className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
+                <Eye className="w-5 h-5" />
+                <span className="hidden sm:inline text-sm font-medium">מפת בית הכנסת</span>
+              </a>
             </div>
-            
-            <button onClick={() => setActiveTab('settings')} className={`flex items-center gap-1 p-2 rounded-lg transition-colors ${activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'}`}>
-              <Settings className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">הגדרות</span>
-            </button>
-            <a href="/donations/seating" className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
-              <Eye className="w-5 h-5" />
-              <span className="hidden sm:inline text-sm font-medium">צפייה בשיבוץ</span>
-            </a>
             <button onClick={onLogout} className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
               <LogOut className="w-5 h-5" />
               <span className="hidden sm:inline text-sm font-medium">התנתק</span>

@@ -310,7 +310,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 <h2 className="text-2xl font-bold text-slate-800">עריכת שיבוץ המקומות</h2>
                 <p className="mt-1 text-sm text-slate-500">השמות כאן מוצגים ללקוחות במפת השיבוץ. השארת השם ריק תפנה את המושב.</p>
               </div>
-              <p className="mb-3 text-xs font-medium text-slate-500">לחצו על מושב כדי לערוך את השם המופיע עליו. ירוק — מאושר, צהוב — ממתין, לבן — פנוי.</p>
+              <p className="mb-3 text-xs font-medium text-slate-500">לחצו על מושב כדי לערוך את השם המופיע עליו.</p>
               <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="grid min-w-[1680px] gap-1.5" style={{ gridTemplateColumns: 'repeat(34, 48px)', gridTemplateRows: 'repeat(16, 48px)' }}>
                   {SEATS.map((seat) => {
@@ -318,8 +318,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                     const status = current?.status || 'available';
                     const owner = current?.owner || '';
                     return <button key={seat.id} type="button" onClick={() => setSelectedSeat({ id: seat.id, owner, status })} style={{ gridColumn: seat.col + 1, gridRow: seat.row + 1 }} className={`min-w-0 rounded-md border px-1 text-center text-xs font-bold leading-tight shadow-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${status === 'taken' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : status === 'pending' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-slate-300 bg-white text-slate-500'}`} title={`${seat.id}${owner ? ` — ${owner}` : ' — פנוי'}`}>
-                      <span className="block font-mono text-[10px] opacity-70" dir="ltr">{seat.id}</span>
-                      <span className="block max-h-8 overflow-hidden break-words">{owner || 'פנוי'}</span>
+                      <span className="block max-h-10 overflow-hidden break-words">{owner || 'פנוי'}</span>
                     </button>;
                   })}
                 </div>

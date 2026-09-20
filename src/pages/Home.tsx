@@ -12,7 +12,7 @@ interface PublicSeat extends SeatStatus {
   pendingNames: string[];
 }
 
-export function Home({ initialViewMode = false }: { initialViewMode?: boolean }) {
+export function Home({ initialViewMode = false, lockViewMode = false }: { initialViewMode?: boolean; lockViewMode?: boolean }) {
   const [seatStatuses, setSeatStatuses] = useState<Record<string, SeatStatus>>({});
   const [publicSeats, setPublicSeats] = useState<Record<string, PublicSeat>>({});
   const [loading, setLoading] = useState(true);
@@ -42,12 +42,12 @@ export function Home({ initialViewMode = false }: { initialViewMode?: boolean })
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:p-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-semibold text-slate-800 mb-2">{viewMode ? "צפייה בשיבוץ" : "מפת המושבים"}</h1>
+            <h1 className="text-3xl font-semibold text-slate-800 mb-2">{viewMode ? "מפת בית הכנסת" : "מפת המושבים"}</h1>
             <p className="text-slate-500">{viewMode ? "מפת המקומות המעודכנת בבית הכנסת." : "כאן תוכלו לראות את מצב המושבים בבית הכנסת לקראת השנה החדשה."}</p>
           </div>
-          <button type="button" onClick={() => setViewMode(current => !current)} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 transition-colors hover:bg-indigo-100">
+          {!lockViewMode && <button type="button" onClick={() => setViewMode(current => !current)} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 transition-colors hover:bg-indigo-100">
             {viewMode ? <><MapIcon className="h-4 w-4" /> חזרה למפה</> : <><Eye className="h-4 w-4" /> צפייה בשיבוץ</>}
-          </button>
+          </button>}
         </div>
 
         <div className="flex gap-4 mb-8 justify-center flex-wrap">
