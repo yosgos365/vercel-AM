@@ -63,10 +63,6 @@ export function Home({ initialViewMode = false, lockViewMode = false, editableSe
             <span className="text-sm">{viewMode ? "מקום פנוי" : "פנוי"}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={clsx("w-4 h-4 bg-amber-100 border border-amber-300", viewMode ? "rounded-sm" : "rounded-full")}></div>
-            <span className="text-sm">{viewMode ? "ממתין לאישור" : "בהמתנה לאישור"}</span>
-          </div>
-          <div className="flex items-center gap-2">
             <div className={clsx("w-4 h-4 border", viewMode ? "bg-emerald-200 border-emerald-600 rounded-sm" : "bg-rose-200 border-rose-500 rounded-full")}></div>
             <span className="text-sm">{viewMode ? "מקום מאושר" : "תפוס"}</span>
           </div>
@@ -104,10 +100,13 @@ export function Home({ initialViewMode = false, lockViewMode = false, editableSe
                 const status = editedSeat?.status || seatStatuses[seat.id]?.status || "available";
                 const publicSeat = publicSeats[seat.id];
                 const publicStatus = editedSeat?.status || publicSeat?.status || status;
+                // The public map intentionally has only two states: available or occupied.
+                // A request awaiting approval is therefore shown as occupied, without
+                // exposing a separate "pending" status to visitors.
+                const visualPublicStatus = publicStatus === "available" ? "available" : "taken";
                 const names = editedSeat?.owner ? [editedSeat.owner] : Array.from(new Set(publicStatus === "taken" ? publicSeat?.approvedNames || [] : publicSeat?.pendingNames || []));
-                const pendingNames = Array.from(new Set(publicSeat?.pendingNames || [])).filter((name) => !names.includes(name));
                 const nameText = names.join(" · ");
-                const nameSize = nameText.length > 21 ? "text-[9px] leading-[1.1] sm:text-[10px]" : nameText.length > 12 ? "text-[10px] leading-[1.14] sm:text-[11px]" : "text-[11px] leading-[1.18] sm:text-[12px]";
+                const nameSize = nameText.length > 34 ? "text-[7px] leading-[1.05] sm:text-[8px]" : nameText.length > 24 ? "text-[8px] leading-[1.08] sm:text-[9px]" : nameText.length > 14 ? "text-[9px] leading-[1.1] sm:text-[10px]" : "text-[11px] leading-[1.18] sm:text-[12px]";
                 
                 return (
                   <button
@@ -121,9 +120,8 @@ export function Home({ initialViewMode = false, lockViewMode = false, editableSe
                       !viewMode && status === "available" && "bg-emerald-50 text-emerald-700 border-emerald-200",
                       !viewMode && status === "pending" && "bg-amber-50 text-amber-700 border-amber-200",
                       !viewMode && status === "taken" && "bg-rose-200 text-rose-900 border-rose-500 ring-1 ring-rose-300",
-                      viewMode && publicStatus === "available" && "bg-white text-slate-300 border-slate-300",
-                      viewMode && publicStatus === "pending" && "bg-amber-50 text-amber-950 border-amber-400",
-                      viewMode && publicStatus === "taken" && "bg-emerald-100 text-emerald-950 border-emerald-600",
+                      viewMode && visualPublicStatus === "available" && "bg-white text-slate-300 border-slate-300",
+                      viewMode && visualPublicStatus === "taken" && "bg-emerald-100 text-emerald-950 border-emerald-600",
                     )}
                     style={{
                       gridRow: seat.row + 1,
@@ -140,26 +138,13 @@ export function Home({ initialViewMode = false, lockViewMode = false, editableSe
                               display: "-webkit-box",
                               WebkitBoxOrient: "vertical",
                               WebkitLineClamp: 5,
-                              overflowWrap: "anywhere",
-                              wordBreak: "break-word",
+                              overflowWrap: "normal",
+                              wordBreak: "keep-all",
+                              whiteSpace: "normal",
                             }}
                           >
                             {names.join(" · ")}
                           </span>
-                          {publicStatus === "taken" && pendingNames.length ? (
-                            <span
-                              className="mt-1 max-w-full overflow-hidden px-0.5 text-[9px] font-medium leading-tight text-amber-800"
-                              style={{
-                                display: "-webkit-box",
-                                WebkitBoxOrient: "vertical",
-                              WebkitLineClamp: 2,
-                              overflowWrap: "normal",
-                              wordBreak: "normal",
-                              }}
-                            >
-                              ממתין: {pendingNames.join(" · ")}
-                            </span>
-                          ) : null}
                         </>
                       ) : (
                         <span className="text-sm font-semibold text-slate-500">{seat.label}</span>

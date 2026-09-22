@@ -141,14 +141,16 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
         backgroundColor: '#ffffff'
       });
       
-      const image = canvas.toDataURL('image/png');
-      
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('Could not generate receipt image');
+      const image = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = image;
       link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
+      setGeneratedReceipt(image);
     } catch (err) {
       console.error('Failed to download receipt', err);
       alert('אירעה שגיאה בהורדת האישור תשלום.');
@@ -596,8 +598,9 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
             {generatedReceipt ? (
               <div className="p-8 bg-white text-center rounded-b-xl">
                 <p className="text-emerald-600 font-bold mb-4">האישור תשלום הופקה בהצלחה!</p>
-                <p className="text-slate-600 text-sm mb-4">בגלל שאתה במצב תצוגה מקדימה, שמירת האישור תשלום מתבצעת כך:</p>
+                <p className="text-slate-600 text-sm mb-4">האישור מוכן גם להורדה וגם לשמירה ידנית.</p>
                 <img src={generatedReceipt} alt="אישור תשלום" className="max-w-full h-auto border border-slate-200 shadow-sm mx-auto mb-4 rounded" />
+                <a href={generatedReceipt} download={`אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`} className="mb-4 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">הורד קובץ PNG</a>
                 <p className="text-indigo-600 font-bold text-sm bg-indigo-50 p-3 rounded-lg inline-block">
                   👈 מטלפון: לחיצה ארוכה על התמונה ➔ "שמור תמונה"<br/>
                   🖱️ ממחשב: קליק ימני על התמונה ➔ "שמור תמונה בשם..."
