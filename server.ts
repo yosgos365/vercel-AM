@@ -32,7 +32,9 @@ const DONATION_USER_SESSION_SECRET = process.env.DONATION_USER_SESSION_SECRET ||
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
-const HEBREW_PDF_FONT_PATH = path.join(process.cwd(), "assets", "fonts", "NotoSansHebrew-Regular.ttf");
+// Heebo includes Hebrew, Latin, numerals and the ₪ sign in one embeddable font.
+// That prevents missing-glyph squares in payment amounts and receipt numbers.
+const HEBREW_PDF_FONT_PATH = path.join(process.cwd(), "assets", "fonts", "Heebo-Variable.ttf");
 const DONATION_LOGO_PATH = path.join(process.cwd(), "public", "logo-no-text.jpeg");
 
 const firebaseStorageBucket = () => {
@@ -587,7 +589,7 @@ app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
     document.fillColor("#1e293b").fontSize(13).text(receiptNumber, 54, 153, { width: 190, align: "right" });
     field("שם התורם:", owner?.name || "לא ידוע", 195);
     field("תאריך הפקה:", new Intl.DateTimeFormat("he-IL").format(new Date()), 230, true);
-    field("אמצעי תשלום:", method, 265);
+    field("אמצעי תשלום:", method, 265, method === "PayBox");
     writeRtl("התחייבויות ששולמו:", 310, 12, "#64748b");
     let y = 337;
     for (const pledge of receiptPledges) {
