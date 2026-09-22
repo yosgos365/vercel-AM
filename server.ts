@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import path from "path";
 import fs from "fs/promises";
 import bodyParser from "body-parser";
+import PDFDocument from "pdfkit";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
@@ -31,6 +32,7 @@ const DONATION_USER_SESSION_SECRET = process.env.DONATION_USER_SESSION_SECRET ||
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
+const HEBREW_PDF_FONT_PATH = path.join(process.cwd(), "assets", "fonts", "NotoSansHebrew-Regular.ttf");
 
 const firebaseStorageBucket = () => {
   // The Firebase Admin app is initialized together with Firestore before any
@@ -524,6 +526,76 @@ app.post("/api/donations/me/payment", donationUserAuth, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "דיווח התשלום נכשל" });
+  }
+});
+
+// A server-generated PDF avoids client-side canvas rendering, which can fail
+// on mobile browsers and inside embedded webviews. The token is short-lived
+// and the route verifies that a customer can download only their own receipt.
+app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
+  try {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    const isManager = isValidSession(token) || isDonationDeveloperSession(token);
+    const userId = donationUserIdFromToken(token);
+    if (!isManager && !userId) return res.status(401).json({ error: "תוקף ההתחברות פג. יש להתחבר מחדש." });
+
+    const receiptNumber = String(req.params.receiptNumber || "").trim();
+    if (!receiptNumber) return res.status(400).json({ error: "מספר אישור חסר" });
+    const dashboard = isManager ? await getDonationDashboard() : null;
+    const availablePledges = isManager ? dashboard!.pledges : await getDonationPledgesForUser(userId!);
+    const receiptPledges = availablePledges.filter((pledge) => pledge.receiptNumber === receiptNumber);
+    if (!receiptPledges.length) return res.status(404).json({ error: "אישור התשלום לא נמצא" });
+
+    const ownerId = receiptPledges[0].userId;
+    if (!isManager && ownerId !== userId) return res.status(403).json({ error: "אין הרשאה לאישור זה" });
+    const owner = isManager ? dashboard!.users.find((user) => user.id === ownerId) : await getDonationUser(ownerId);
+    const total = receiptPledges.reduce((sum, pledge) => sum + pledge.amount, 0);
+    const method = receiptPledges[0].paymentMethod === "paybox" ? "PayBox" : receiptPledges[0].paymentMethod === "bank" ? "העברה בנקאית" : "מזומן";
+    const reverseHebrew = (value: string) => Array.from(value).reverse().join("");
+    const font = await fs.readFile(HEBREW_PDF_FONT_PATH);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="payment-receipt-${receiptNumber}.pdf"; filename*=UTF-8''${encodeURIComponent(`אישור תשלום-${receiptNumber}.pdf`)}`);
+    const document = new PDFDocument({ size: "A4", margin: 54, info: { Title: `אישור תשלום ${receiptNumber}`, Author: "אחוות מנחם" } });
+    document.registerFont("Hebrew", font);
+    document.pipe(res);
+    document.font("Hebrew");
+
+    const right = 541;
+    const writeRtl = (value: string, y: number, size = 12, color = "#0f172a") => {
+      document.fillColor(color).fontSize(size).text(reverseHebrew(value), 54, y, { width: right - 54, align: "right" });
+    };
+    const divider = (y: number) => document.moveTo(54, y).lineTo(right, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+    const field = (label: string, value: string, y: number, valueIsLtr = false) => {
+      document.fillColor("#64748b").fontSize(11).text(reverseHebrew(label), 54, y, { width: 180, align: "right" });
+      document.fillColor("#0f172a").fontSize(12).text(valueIsLtr ? value : reverseHebrew(value), 240, y, { width: right - 240, align: "right" });
+      divider(y + 27);
+    };
+
+    writeRtl("אחוות מנחם", 72, 24, "#1d4ed8");
+    writeRtl("אישור תשלום / אישור תרומה", 108, 13, "#475569");
+    divider(136);
+    writeRtl("מספר אישור תשלום:", 153, 13, "#1e293b");
+    document.fillColor("#1e293b").fontSize(13).text(receiptNumber, 54, 153, { width: 190, align: "right" });
+    field("שם התורם:", owner?.name || "לא ידוע", 195);
+    field("תאריך הפקה:", new Intl.DateTimeFormat("he-IL").format(new Date()), 230, true);
+    field("אמצעי תשלום:", method, 265);
+    writeRtl("התחייבויות ששולמו:", 310, 12, "#64748b");
+    let y = 337;
+    for (const pledge of receiptPledges) {
+      document.fillColor("#0f172a").fontSize(12).text(reverseHebrew(pledge.type), 54, y, { width: 320, align: "right" });
+      document.fillColor("#0f172a").fontSize(12).text(`₪${pledge.amount}`, 410, y, { width: 131, align: "right" });
+      y += 25;
+    }
+    divider(y + 3);
+    writeRtl("סכום ששולם:", y + 20, 16, "#0f172a");
+    document.fillColor("#0f172a").fontSize(16).text(`₪${total}`, 54, y + 20, { width: 190, align: "right" });
+    divider(y + 54);
+    writeRtl("תודה רבה על תרומתך!", y + 82, 13, "#334155");
+    writeRtl("אישור זה מהווה אישור על התשלום שבוצע.", y + 108, 11, "#64748b");
+    document.end();
+  } catch (error) {
+    if (!res.headersSent) res.status(500).json({ error: error instanceof Error ? error.message : "הפקת אישור התשלום נכשלה" });
   }
 });
 

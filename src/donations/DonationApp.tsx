@@ -292,6 +292,16 @@ export function DonationApp() {
     }
   };
 
+  const downloadReceiptPdf = (receiptNumber: string, sessionToken: string) => {
+    if (!receiptNumber || !sessionToken) return showNotice("אישור התשלום אינו זמין להורדה", "error");
+    const link = document.createElement("a");
+    link.href = `/api/donations/receipt-pdf/${encodeURIComponent(receiptNumber)}?token=${encodeURIComponent(sessionToken)}`;
+    link.download = `אישור תשלום-${receiptNumber}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   if (registeringPhone) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4" dir="rtl">
@@ -319,6 +329,7 @@ export function DonationApp() {
           onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
           onSubmitPayment={submitCurrentUserPayment}
           onUpdateUser={(user) => void updateCurrentUser(user)}
+          onDownloadReceipt={(receiptNumber) => downloadReceiptPdf(receiptNumber, userToken)}
         />
         {noticeBanner}
       </div>
@@ -363,6 +374,7 @@ export function DonationApp() {
         onApprovePledge={(pledgeId, approvalNote) => mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST", { approvalNote }, "התשלום אושר ונשמר בהצלחה.")}
         onSavePledgeNote={(pledgeId, approvalNote) => mutate(`/api/donations/admin/pledges/${pledgeId}/note`, "PUT", { approvalNote }, "הערת הגבאי נשמרה.")}
         onViewReceipt={viewReceiptImage}
+        onDownloadReceipt={(receiptNumber) => downloadReceiptPdf(receiptNumber, token)}
         onAddPledge={(pledge: Partial<Pledge>, name, phone) => mutate("/api/donations/admin/pledges", "POST", {
           name,
           phone,

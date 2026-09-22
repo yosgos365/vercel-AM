@@ -11,6 +11,7 @@ interface AdminDashboardProps {
   onApprovePledge: (id: string, approvalNote: string) => Promise<boolean>;
   onSavePledgeNote: (id: string, approvalNote: string) => Promise<boolean>;
   onViewReceipt: (receiptImage?: string) => void;
+  onDownloadReceipt: (receiptNumber: string) => void;
   onAddPledge: (pledgeData: Partial<Pledge>, userName: string, phone: string) => Promise<boolean>;
   onUpdateUser: (id: string, name: string, phone: string) => Promise<boolean>;
   onAddUser: (name: string, phone: string) => Promise<boolean>;
@@ -22,11 +23,10 @@ interface AdminDashboardProps {
   onUpdateSeat?: (seatId: string, owner: string) => Promise<void> | void;
 }
 
-export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onSavePledgeNote, onViewReceipt, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
+export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onSavePledgeNote, onViewReceipt, onDownloadReceipt, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users' | 'seating'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
-  const [generatedReceipt, setGeneratedReceipt] = useState<string | null>(null);
   const [userModal, setUserModal] = useState<{ isOpen: boolean; mode: 'add' | 'edit'; id?: string; name: string; phone: string }>({ isOpen: false, mode: 'add', name: '', phone: '' });
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ isOpen: boolean; id: string; name: string }>({ isOpen: false, id: '', name: '' });
   const [pledgeDeleteModal, setPledgeDeleteModal] = useState<{ isOpen: boolean; id: string; name: string; type: string }>({ isOpen: false, id: '', name: '', type: '' });
@@ -40,23 +40,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleDownloadReceipt = () => {
-    const receiptElement = document.getElementById('receipt-content-to-download');
-    if (!receiptElement) return;
-    try {
-      const documentHtml = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>אישור תשלום</title><style>body{margin:0;padding:32px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a}#receipt-content-to-download{max-width:600px;margin:auto;background:#fff;padding:32px;box-sizing:border-box}*{box-sizing:border-box}@media print{body{padding:0;background:#fff}#receipt-content-to-download{max-width:none;margin:0}}</style></head><body>${receiptElement.outerHTML}</body></html>`;
-      const blob = new Blob([documentHtml], { type: 'text/html;charset=utf-8' });
-      const image = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.html`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(image), 10_000);
-    } catch (err) {
-      console.error('Failed to download receipt', err);
-      alert('אירעה שגיאה בהורדת האישור תשלום.');
-    }
+    if (receiptPledge?.receiptNumber) onDownloadReceipt(receiptPledge.receiptNumber);
   };
 
   const pendingPledges = pledges.filter(p => p.status === 'pending');
@@ -760,7 +744,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
                 >
                   <Download className="w-4 h-4" />
-                  הורד אישור
+                  הורד PDF
                 </button>
                 <button
                   onClick={() => window.print()}
@@ -770,7 +754,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   הדפס
                 </button>
                 <button
-                  onClick={() => { setReceiptPledge(null); setGeneratedReceipt(null); }}
+                  onClick={() => setReceiptPledge(null)}
                   className="px-3 py-1.5 text-slate-500 hover:bg-slate-200 text-sm font-bold rounded-lg transition-colors"
                 >
                   סגור
@@ -778,19 +762,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
               </div>
             </div>
             
-            {generatedReceipt ? (
-              <div className="p-8 bg-white text-center rounded-b-xl">
-                <p className="text-emerald-600 font-bold mb-4">האישור תשלום הופק בהצלחה!</p>
-                <p className="text-slate-600 text-sm mb-4">האישור מוכן גם להורדה וגם לשמירה ידנית.</p>
-                <img src={generatedReceipt} alt="אישור תשלום" className="max-w-full h-auto border border-slate-200 shadow-sm mx-auto mb-4 rounded" />
-                <a href={generatedReceipt} download={`אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`} className="mb-4 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">הורד קובץ PNG</a>
-                <p className="text-indigo-600 font-bold text-sm bg-indigo-50 p-3 rounded-lg inline-block">
-                  👈 מטלפון: לחיצה ארוכה על התמונה ➔ "שמור תמונה"<br/>
-                  🖱️ ממחשב: קליק ימני על התמונה ➔ "שמור תמונה בשם..."
-                </p>
-              </div>
-            ) : (
-              <div id="receipt-content-to-download" className="p-8 print:p-0 receipt-content bg-white text-slate-900">
+            <div id="receipt-content-to-download" className="p-8 print:p-0 receipt-content bg-white text-slate-900">
                 <div className="text-center mb-6 border-b border-slate-200 pb-6">
                   <h2 className="text-2xl font-bold text-slate-900 mb-1">אחוות מנחם</h2>
                   <p className="text-slate-500 text-sm">אישור תשלום על תרומה / התחייבות</p>
@@ -825,8 +797,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   <p className="font-bold mb-1">תודה רבה על תרומתך!</p>
                   <p>אישור התשלום מהווה אישור על התשלום שבוצע.</p>
                 </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}

@@ -12,9 +12,10 @@ interface UserDashboardProps {
   onLogout: () => void;
   onSubmitPayment: (pledgeIds: string[], method: 'paybox' | 'bank', file: File | null) => Promise<boolean>;
   onUpdateUser: (user: User) => void;
+  onDownloadReceipt: (receiptNumber: string) => void;
 }
 
-export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpdateUser }: UserDashboardProps) {
+export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpdateUser, onDownloadReceipt }: UserDashboardProps) {
   const [activeTab, setActiveTab] = useState<'open' | 'history' | 'settings'>('open');
   const [isAddingFamilyMember, setIsAddingFamilyMember] = useState(false);
   const [newFamilyMember, setNewFamilyMember] = useState<{name: string, hebrewDob: any}>({ name: '', hebrewDob: null });
@@ -23,7 +24,6 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
   const [selectedPledges, setSelectedPledges] = useState<Set<string>>(new Set());
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
-  const [generatedReceipt, setGeneratedReceipt] = useState<string | null>(null);
 
   const openPledges = pledges.filter(p => p.status === 'open');
   const pendingPledges = pledges.filter(p => p.status === 'pending');
@@ -131,23 +131,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
 
   
   const handleDownloadReceipt = () => {
-    const receiptElement = document.getElementById('user-receipt-content-to-download');
-    if (!receiptElement) return;
-    try {
-      const documentHtml = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>אישור תשלום</title><style>body{margin:0;padding:32px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a}#user-receipt-content-to-download{max-width:600px;margin:auto;background:#fff;padding:32px;box-sizing:border-box}*{box-sizing:border-box}@media print{body{padding:0;background:#fff}#user-receipt-content-to-download{max-width:none;margin:0}}</style></head><body>${receiptElement.outerHTML}</body></html>`;
-      const blob = new Blob([documentHtml], { type: 'text/html;charset=utf-8' });
-      const image = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.html`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(image), 10_000);
-    } catch (err) {
-      console.error('Failed to download receipt', err);
-      alert('אירעה שגיאה בהורדת האישור תשלום.');
-    }
+    if (receiptPledge?.receiptNumber) onDownloadReceipt(receiptPledge.receiptNumber);
   };
 
   const handlePaymentSubmit = async (method: 'paybox' | 'bank', file: File | null) => {
@@ -570,7 +554,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
                   className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
                 >
                   <Download className="w-4 h-4" />
-                  הורד אישור
+                  הורד PDF
                 </button>
                 <button
                   onClick={() => window.print()}
@@ -580,7 +564,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
                   הדפס
                 </button>
                 <button
-                  onClick={() => { setReceiptPledge(null); setGeneratedReceipt(null); }}
+                  onClick={() => setReceiptPledge(null)}
                   className="px-3 py-1.5 text-slate-500 hover:bg-slate-200 text-sm font-bold rounded-lg transition-colors"
                 >
                   סגור
@@ -588,19 +572,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
               </div>
             </div>
             
-            {generatedReceipt ? (
-              <div className="p-8 bg-white text-center rounded-b-xl">
-                <p className="text-emerald-600 font-bold mb-4">האישור תשלום הופקה בהצלחה!</p>
-                <p className="text-slate-600 text-sm mb-4">האישור מוכן גם להורדה וגם לשמירה ידנית.</p>
-                <img src={generatedReceipt} alt="אישור תשלום" className="max-w-full h-auto border border-slate-200 shadow-sm mx-auto mb-4 rounded" />
-                <a href={generatedReceipt} download={`אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`} className="mb-4 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">הורד קובץ PNG</a>
-                <p className="text-indigo-600 font-bold text-sm bg-indigo-50 p-3 rounded-lg inline-block">
-                  👈 מטלפון: לחיצה ארוכה על התמונה ➔ "שמור תמונה"<br/>
-                  🖱️ ממחשב: קליק ימני על התמונה ➔ "שמור תמונה בשם..."
-                </p>
-              </div>
-            ) : (
-              <div id="user-receipt-content-to-download" className="p-8 print:p-0 receipt-content bg-white text-slate-900">
+            <div id="user-receipt-content-to-download" className="p-8 print:p-0 receipt-content bg-white text-slate-900">
                 <div className="text-center mb-8 border-b-2 border-slate-100 pb-6">
                   <h2 className="text-2xl font-bold text-indigo-700 mb-1">אחוות מנחם</h2>
                   <p className="text-slate-500 font-medium">אישור תשלום / אישור תרומה</p>
@@ -639,8 +611,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
                   <p className="font-medium text-slate-700 mb-1">תודה רבה על תרומתך!</p>
                   <p>האישור תשלום מהווה אישור על התשלום שבוצע.</p>
                 </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}
