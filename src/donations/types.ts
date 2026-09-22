@@ -43,6 +43,8 @@ export interface Pledge {
   paidAt?: string;
   approvedAt?: string;
   receiptNumber?: string;
+  paymentBatchId?: string;
+  receiptPledgeIds?: string[];
   approvalNote?: string;
   createdAt: number;
   updatedAt: number;

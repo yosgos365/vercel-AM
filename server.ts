@@ -7,11 +7,11 @@ import bodyParser from "body-parser";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
-import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationPledge, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, updateDonationUser } from "./donationDatabase";
+import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationPledge, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, updateDonationPledgeNote, updateDonationUser } from "./donationDatabase";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors());
 app.use(bodyParser.json({ limit: "10mb" }));
@@ -422,6 +422,15 @@ app.post("/api/donations/admin/pledges/:id/approve", donationAdminAuth, async (r
   }
 });
 
+app.put("/api/donations/admin/pledges/:id/note", donationAdminAuth, async (req, res) => {
+  try {
+    const note = typeof req.body?.approvalNote === "string" ? req.body.approvalNote : "";
+    res.json(await updateDonationPledgeNote(req.params.id, note));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "שמירת הערת הגבאי נכשלה" });
+  }
+});
+
 app.post("/api/donations/admin/pledges/payment", donationAdminAuth, async (req, res) => {
   try {
     const pledgeIds = Array.isArray(req.body?.pledgeIds) ? req.body.pledgeIds.filter((item: unknown): item is string => typeof item === "string") : [];
@@ -541,7 +550,7 @@ const deleteStoredPaymentImage = async (imageUrl: string) => {
 
 const servePaymentImage = async (req: express.Request, res: express.Response) => {
   const token = typeof req.query.token === "string" ? req.query.token : "";
-  if (!isValidSession(token)) return res.status(401).end();
+  if (!isValidSession(token) && !isDonationDeveloperSession(token)) return res.status(401).end();
   // The wildcard keeps legacy Firebase links readable after Netlify decodes
   // their %2F during the function redirect.
   const fileId = typeof req.params.fileId === "string"
@@ -575,6 +584,8 @@ const servePaymentImage = async (req: express.Request, res: express.Response) =>
 // remains only for older records whose Firebase object path contains '/'.
 app.get("/api/payment-images/:fileId", servePaymentImage);
 app.get("/api/payment-images/*", servePaymentImage);
+app.get("/api/donations/receipt-images/:fileId", servePaymentImage);
+app.get("/api/donations/receipt-images/*", servePaymentImage);
 
 // Called by Vercel Cron. The idempotent daily backup function ensures the
 // duplicate winter/summer schedules still create one backup per Israel date.

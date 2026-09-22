@@ -32,7 +32,7 @@ export function Login({ onLogin, onAdminLogin, error }: LoginProps) {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center text-blue-600">
-          <img src="https://raw.githubusercontent.com/yosgos365/AM-Donations/main/Logo_no_text.jpeg" alt="אחוות מנחם" className="w-32 h-auto object-contain mix-blend-multiply" />
+          <img src="/logo-no-text.jpeg" alt="אחוות מנחם" className="w-32 h-auto object-contain mix-blend-multiply" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-stone-900">
           {isAdminMode ? 'כניסת מנהל' : 'אזור אישי - אחוות מנחם'}

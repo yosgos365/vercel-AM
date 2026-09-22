@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
 import { Home } from '../../pages/Home';
-import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon } from 'lucide-react';
+import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon, MessageSquarePlus } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface AdminDashboardProps {
@@ -9,19 +9,21 @@ interface AdminDashboardProps {
   users: User[];
   pledges: Pledge[];
   onLogout: () => void;
-  onApprovePledge: (id: string, approvalNote: string) => void;
-  onAddPledge: (pledgeData: Partial<Pledge>, userName: string, phone: string) => void;
-  onUpdateUser: (id: string, name: string, phone: string) => void;
-  onAddUser: (name: string, phone: string) => void;
-  onDeleteUser: (id: string) => void;
+  onApprovePledge: (id: string, approvalNote: string) => Promise<boolean>;
+  onSavePledgeNote: (id: string, approvalNote: string) => Promise<boolean>;
+  onViewReceipt: (receiptImage?: string) => void;
+  onAddPledge: (pledgeData: Partial<Pledge>, userName: string, phone: string) => Promise<boolean>;
+  onUpdateUser: (id: string, name: string, phone: string) => Promise<boolean>;
+  onAddUser: (name: string, phone: string) => Promise<boolean>;
+  onDeleteUser: (id: string) => Promise<boolean>;
   isDeveloper?: boolean;
   onChangeAdminPassword?: (newPassword: string) => Promise<void> | void;
-  onDeletePledge?: (id: string) => Promise<void> | void;
+  onDeletePledge?: (id: string) => Promise<boolean>;
   seating?: Record<string, { status: "available" | "pending" | "taken"; owner?: string }>;
   onUpdateSeat?: (seatId: string, owner: string) => Promise<void> | void;
 }
 
-export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
+export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onSavePledgeNote, onViewReceipt, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users' | 'seating'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
@@ -33,6 +35,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [approvalModal, setApprovalModal] = useState<{ isOpen: boolean; id: string; note: string }>({ isOpen: false, id: '', note: '' });
+  const [noteModal, setNoteModal] = useState<{ isOpen: boolean; id: string; note: string }>({ isOpen: false, id: '', note: '' });
   const [selectedSeat, setSelectedSeat] = useState<{ id: string; owner: string; status: "available" | "pending" | "taken" } | null>(null);
   const [savingSeat, setSavingSeat] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,14 +52,12 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
       
       const image = canvas.toDataURL('image/png');
       
-      if (window.self !== window.top) {
-        setGeneratedReceipt(image);
-      } else {
-        const link = document.createElement('a');
-        link.href = image;
-        link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`;
-        link.click();
-      }
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err) {
       console.error('Failed to download receipt', err);
       alert('אירעה שגיאה בהורדת האישור תשלום.');
@@ -64,6 +65,10 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   };
 
   const pendingPledges = pledges.filter(p => p.status === 'pending');
+  const receiptPledges = receiptPledge
+    ? (() => { const related = pledges.filter((pledge) => pledge.receiptNumber === receiptPledge.receiptNumber || receiptPledge.receiptPledgeIds?.includes(pledge.id)); return related.length ? related : [receiptPledge]; })()
+    : [];
+  const receiptTotal = receiptPledges.reduce((sum, pledge) => sum + pledge.amount, 0);
 
   const cancelLongPress = () => {
     if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
@@ -103,6 +108,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [newPledgeType, setNewPledgeType] = useState('עלייה לתורה');
   const [newPledgeAmount, setNewPledgeAmount] = useState('');
   const [newPledgeDate, setNewPledgeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newPledgeNote, setNewPledgeNote] = useState('');
 
   const matchingUser = users.find(u => u.name === newPledgeName);
   const isExistingUser = !!matchingUser;
@@ -115,14 +121,14 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
     setUserModal({ isOpen: true, mode: 'edit', id, name, phone });
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userModal.name || !userModal.phone) return;
     
     if (userModal.mode === 'add') {
-      onAddUser(userModal.name, userModal.phone);
+      if (!await onAddUser(userModal.name, userModal.phone)) return;
     } else if (userModal.mode === 'edit' && userModal.id) {
-      onUpdateUser(userModal.id, userModal.name, userModal.phone);
+      if (!await onUpdateUser(userModal.id, userModal.name, userModal.phone)) return;
     }
     
     setUserModal({ isOpen: false, mode: 'add', name: '', phone: '' });
@@ -173,27 +179,28 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
     URL.revokeObjectURL(url);
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const phoneToUse = isExistingUser ? matchingUser.phone : newPledgePhone;
 
     if (!newPledgeName || (!isExistingUser && !newPledgePhone) || !newPledgeAmount) {
-      alert('נא למלא את כל שדות החובה.');
+      return;
       return;
     }
 
-    onAddPledge({
+    if (!await onAddPledge({
       type: newPledgeType,
       amount: Number(newPledgeAmount),
       date: newPledgeDate,
+      approvalNote: newPledgeNote.trim(),
       status: 'open'
-    }, newPledgeName, phoneToUse);
+    }, newPledgeName, phoneToUse)) return;
 
     setNewPledgeName('');
     setNewPledgePhone('');
     setNewPledgeAmount('');
+    setNewPledgeNote('');
     setActiveTab('all');
-    alert('ההתחייבות נוספה בהצלחה! השם שויך לרשימת ההתחייבויות.');
   };
 
   const getUserDetails = (userId: string) => users.find(u => u.id === userId);
@@ -212,11 +219,11 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
 
   return (
     <div className="min-h-screen bg-stone-100 pb-12">
-      <header className="bg-slate-900 text-white shadow-sm sticky top-0 z-10">
+      <header className={`bg-slate-900 text-white shadow-sm ${activeTab === 'seating' ? '' : 'sticky top-0 z-10'}`}>
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-slate-800 p-1 rounded-lg">
-              <img src="https://raw.githubusercontent.com/yosgos365/AM-Donations/main/Logo.jpeg" alt="אחוות מנחם" className="w-10 h-auto object-contain mix-blend-multiply" />
+              <img src="/logo-no-text.jpeg" alt="אחוות מנחם" className="w-10 h-auto object-contain mix-blend-multiply" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-wide">{isDeveloper ? 'ממשק מפתח' : 'ממשק ניהול גבאים'}</h1>
@@ -401,6 +408,11 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                     placeholder="100" 
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">הערת גבאי <span className="text-slate-400 font-normal">(לא חובה)</span></label>
+                  <input type="text" value={newPledgeNote} onChange={event => setNewPledgeNote(event.target.value)} maxLength={500} className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600" />
+                </div>
                 
                 <button 
                   type="submit"
@@ -466,6 +478,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                       <th className="p-4">סכום</th>
                       <th className="p-4">תאריך</th>
                       <th className="p-4">סטטוס</th>
+                      <th className="p-4">דרך תשלום</th>
                       <th className="p-4">הערת גבאי</th>
                       <th className="p-4">פעולות</th>
                     </tr>
@@ -497,19 +510,29 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                                pledge.status === 'pending' ? 'ממתין לאישור' : 'שולם'}
                             </span>
                           </td>
-                          <td className="p-4 text-sm text-slate-600">{pledge.approvalNote || '—'}</td>
+                          <td className="p-4 text-sm text-slate-600">{pledge.paymentMethod === 'paybox' ? 'PayBox' : pledge.paymentMethod === 'bank' ? 'העברה בנקאית' : pledge.paymentMethod === 'cash' ? 'מזומן' : '—'}</td>
+                          <td className="p-4 text-sm text-slate-600">
+                            <button
+                              type="button"
+                              onClick={() => setNoteModal({ isOpen: true, id: pledge.id, note: pledge.approvalNote || '' })}
+                              className={pledge.approvalNote ? 'max-w-48 truncate rounded-md px-2 py-1 text-right text-indigo-700 hover:bg-indigo-50 hover:underline' : 'rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-indigo-700'}
+                              title={pledge.approvalNote ? 'עריכת הערת גבאי' : 'הוספת הערת גבאי'}
+                            >
+                              {pledge.approvalNote ? pledge.approvalNote : <MessageSquarePlus className="h-4 w-4" aria-label="הוספת הערת גבאי" />}
+                            </button>
+                          </td>
                           <td className="p-4">
                             {pledge.status === 'pending' && (
                               <div className="flex gap-2">
                                 <button
                                   className="flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border border-slate-200"
-                                  onClick={() => alert('מציג אסמכתא (בדמו לא נשמר קובץ אמיתי, אבל כאן תיפתח התמונה)')}
+                                  onClick={() => onViewReceipt(pledge.receiptImage)}
                                 >
                                   <ImageIcon className="w-4 h-4" />
                                   צפה באסמכתא
                                 </button>
                                 <button
-                                  onClick={() => setApprovalModal({ isOpen: true, id: pledge.id, note: '' })}
+                                  onClick={() => setApprovalModal({ isOpen: true, id: pledge.id, note: pledge.approvalNote || '' })}
                                   className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition-colors shadow-sm"
                                 >
                                   <CheckCircle2 className="w-4 h-4" />
@@ -542,9 +565,19 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
           <form onSubmit={(event) => { event.preventDefault(); onApprovePledge(approvalModal.id, approvalModal.note.trim()); setApprovalModal({ isOpen: false, id: '', note: '' }); }} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-bold text-slate-900">אישור תשלום</h3>
-            <p className="mt-1 text-sm text-slate-600">אפשר להוסיף הערה שתישמר לצד התשלום.</p>
-            <textarea autoFocus value={approvalModal.note} onChange={(event) => setApprovalModal({ ...approvalModal, note: event.target.value })} maxLength={500} rows={4} placeholder="הערה לגבאי, למשל: נבדקה אסמכתא" className="mt-4 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600" />
+            <p className="mt-1 text-sm text-slate-600">לאחר האישור יופק מספר אישור תשלום. הערות גבאי מנוהלות בנפרד בכל שורה.</p>
             <div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setApprovalModal({ isOpen: false, id: '', note: '' })} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">ביטול</button><button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">אשר תשלום</button></div>
+          </form>
+        </div>
+      )}
+
+      {noteModal.isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+          <form onSubmit={async (event) => { event.preventDefault(); if (await onSavePledgeNote(noteModal.id, noteModal.note)) setNoteModal({ isOpen: false, id: '', note: '' }); }} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-900">הערת גבאי</h3>
+            <p className="mt-1 text-sm text-slate-600">ההערה פנימית ונשמרת לצד ההתחייבות בכל סטטוס.</p>
+            <textarea autoFocus value={noteModal.note} onChange={(event) => setNoteModal({ ...noteModal, note: event.target.value })} maxLength={500} rows={4} placeholder="הוסיפו הערה" className="mt-4 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+            <div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setNoteModal({ isOpen: false, id: '', note: '' })} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">ביטול</button><button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">שמור הערה</button></div>
           </form>
         </div>
       )}
@@ -779,13 +812,17 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                     <span className="text-slate-500">שם התורם:</span>
                     <span className="font-bold text-lg">{getUserDetails(receiptPledge.userId)?.name || 'לא ידוע'}</span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500">תיאור/סוג:</span>
-                    <span className="font-bold">{receiptPledge.type}</span>
+                  <div className="border-b border-slate-100 pb-2">
+                    <span className="text-slate-500">התחייבויות ששולמו:</span>
+                    <ul className="mt-2 space-y-1 font-bold">{receiptPledges.map((pledge) => <li key={pledge.id} className="flex justify-between gap-3"><span>{pledge.type}</span><span dir="ltr">₪{pledge.amount}</span></li>)}</ul>
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-2">
                     <span className="text-slate-500">סכום ששולם:</span>
-                    <span className="font-bold text-xl">₪{receiptPledge.amount}</span>
+                    <span className="font-bold text-xl">₪{receiptTotal}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-100 pb-2">
+                    <span className="text-slate-500">אמצעי תשלום:</span>
+                    <span className="font-bold">{receiptPledge.paymentMethod === 'paybox' ? 'PayBox' : receiptPledge.paymentMethod === 'bank' ? 'העברה בנקאית' : 'מזומן'}</span>
                   </div>
                 </div>
                 <div className="text-center text-sm text-slate-500 pt-6 border-t border-slate-200 border-dashed">

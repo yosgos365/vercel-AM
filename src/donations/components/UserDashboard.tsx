@@ -5,12 +5,13 @@ import html2canvas from 'html2canvas';
 import { PaymentModal } from './PaymentModal';
 import { Settings, Plus, Trash2 } from 'lucide-react';
 import { HebrewDatePicker, HebrewDateValue } from './HebrewDatePicker';
+import { Link } from 'react-router-dom';
 
 interface UserDashboardProps {
   user: User;
   pledges: Pledge[];
   onLogout: () => void;
-  onSubmitPayment: (pledgeIds: string[], method: 'paybox' | 'bank', file: File | null) => void;
+  onSubmitPayment: (pledgeIds: string[], method: 'paybox' | 'bank', file: File | null) => Promise<boolean>;
   onUpdateUser: (user: User) => void;
 }
 
@@ -32,6 +33,10 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
   const historyPledges = [...pendingPledges, ...paidPledges].sort((a, b) => 
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+  const receiptPledges = receiptPledge
+    ? (() => { const related = pledges.filter((pledge) => pledge.receiptNumber === receiptPledge.receiptNumber || receiptPledge.receiptPledgeIds?.includes(pledge.id)); return related.length ? related : [receiptPledge]; })()
+    : [];
+  const receiptTotal = receiptPledges.reduce((sum, pledge) => sum + pledge.amount, 0);
 
   
   
@@ -138,25 +143,24 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
       
       const image = canvas.toDataURL('image/png');
       
-      if (window.self !== window.top) {
-        setGeneratedReceipt(image);
-      } else {
-        const link = document.createElement('a');
-        link.href = image;
-        link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`;
-        link.click();
-      }
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err) {
       console.error('Failed to download receipt', err);
       alert('אירעה שגיאה בהורדת האישור תשלום.');
     }
   };
 
-  const handlePaymentSubmit = (method: 'paybox' | 'bank', file: File | null) => {
-    onSubmitPayment(Array.from(selectedPledges), method, file);
+  const handlePaymentSubmit = async (method: 'paybox' | 'bank', file: File | null) => {
+    if (!await onSubmitPayment(Array.from(selectedPledges), method, file)) return false;
     setIsPaymentModalOpen(false);
     setSelectedPledges(new Set());
     setActiveTab('history');
+    return true;
   };
 
   return (
@@ -165,7 +169,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
       <header className="bg-white shadow-sm border-b border-stone-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <img src="https://raw.githubusercontent.com/yosgos365/AM-Donations/main/Logo_no_text.jpeg" alt="אחוות מנחם" className="h-12 w-auto object-contain mix-blend-multiply" />
+            <img src="/logo-no-text.jpeg" alt="אחוות מנחם" className="h-12 w-auto object-contain mix-blend-multiply" />
           </div>
           <div className="mr-5 flex flex-1 items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -177,10 +181,10 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
                 <Settings className="w-5 h-5" />
                 <span className="hidden sm:inline text-sm font-medium">הגדרות</span>
               </button>
-              <a href="/donations/seating" className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
+              <Link to="/donations/seating" className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
                 <Eye className="w-5 h-5" />
                 <span className="hidden sm:inline text-sm font-medium">מפת בית הכנסת</span>
-              </a>
+              </Link>
             </div>
             <button onClick={onLogout} className="text-stone-500 hover:text-stone-800 flex items-center gap-1 p-2 rounded-lg hover:bg-stone-100 transition-colors">
               <LogOut className="w-5 h-5" />
@@ -614,13 +618,13 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
                     <span className="text-slate-500">לכבוד:</span>
                     <span className="font-bold">{user.name}</span>
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                  <div className="py-2 border-b border-slate-100">
                     <span className="text-slate-500">עבור:</span>
-                    <span className="font-bold">{receiptPledge.type}</span>
+                    <ul className="mt-2 space-y-1 font-bold">{receiptPledges.map((pledge) => <li key={pledge.id} className="flex justify-between gap-3"><span>{pledge.type}</span><span dir="ltr">₪{pledge.amount}</span></li>)}</ul>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b border-slate-100">
                     <span className="text-slate-500">סכום:</span>
-                    <span className="font-bold text-lg">₪{receiptPledge.amount}</span>
+                    <span className="font-bold text-lg">₪{receiptTotal}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b border-slate-100">
                     <span className="text-slate-500">אמצעי תשלום:</span>

@@ -106,6 +106,8 @@ export function Home({ initialViewMode = false, lockViewMode = false, editableSe
                 const publicStatus = editedSeat?.status || publicSeat?.status || status;
                 const names = editedSeat?.owner ? [editedSeat.owner] : Array.from(new Set(publicStatus === "taken" ? publicSeat?.approvedNames || [] : publicSeat?.pendingNames || []));
                 const pendingNames = Array.from(new Set(publicSeat?.pendingNames || [])).filter((name) => !names.includes(name));
+                const nameText = names.join(" · ");
+                const nameSize = nameText.length > 21 ? "text-[9px] leading-[1.1] sm:text-[10px]" : nameText.length > 12 ? "text-[10px] leading-[1.14] sm:text-[11px]" : "text-[11px] leading-[1.18] sm:text-[12px]";
                 
                 return (
                   <button
@@ -133,13 +135,13 @@ export function Home({ initialViewMode = false, lockViewMode = false, editableSe
                       names.length > 0 ? (
                         <>
                           <span
-                            className="max-w-full overflow-hidden px-0.5 text-[11px] font-bold leading-[1.18] sm:text-[12px]"
+                            className={`max-w-full overflow-hidden px-0.5 font-bold ${nameSize}`}
                             style={{
                               display: "-webkit-box",
                               WebkitBoxOrient: "vertical",
                               WebkitLineClamp: 5,
-                              overflowWrap: "normal",
-                              wordBreak: "normal",
+                              overflowWrap: "anywhere",
+                              wordBreak: "break-word",
                             }}
                           >
                             {names.join(" · ")}

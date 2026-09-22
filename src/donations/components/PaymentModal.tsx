@@ -5,12 +5,13 @@ import { Upload, X, CheckCircle2, Wallet, Building2 } from 'lucide-react';
 interface PaymentModalProps {
   pledges: Pledge[];
   onClose: () => void;
-  onSubmit: (method: 'paybox' | 'bank', file: File | null) => void;
+  onSubmit: (method: 'paybox' | 'bank', file: File | null) => Promise<boolean>;
 }
 
 export function PaymentModal({ pledges, onClose, onSubmit }: PaymentModalProps) {
   const [method, setMethod] = useState<'paybox' | 'bank'>('paybox');
   const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const total = pledges.reduce((sum, p) => sum + p.amount, 0);
 
   return (
@@ -69,10 +70,11 @@ export function PaymentModal({ pledges, onClose, onSubmit }: PaymentModalProps) 
 
           {method === 'bank' && (
             <div className="bg-slate-50 p-4 rounded-lg mb-6 border border-slate-200 space-y-2 text-center text-slate-700">
-              <p>בנק: <span className="font-bold">פועלים (12)</span></p>
-              <p>סניף: <span className="font-bold">123</span></p>
-              <p>חשבון: <span className="font-bold">123456</span></p>
-              <p>שם החשבון: <span className="font-bold">בית כנסת אוהל משה</span></p>
+              <p>בנק: <span className="font-bold">ONE ZERO</span></p>
+              <p>מספר בנק: <span className="font-bold">18</span></p>
+              <p>סניף: <span className="font-bold">001</span></p>
+              <p>חשבון: <span className="font-bold" dir="ltr">231666607</span></p>
+              <p>ע״ש: <span className="font-bold">מנחם בן מעש</span></p>
             </div>
           )}
 
@@ -81,7 +83,7 @@ export function PaymentModal({ pledges, onClose, onSubmit }: PaymentModalProps) 
             <input 
               type="file" 
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-              accept="image/*,.pdf"
+              accept="image/jpeg,image/png,image/webp"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
             {file ? (
@@ -94,7 +96,7 @@ export function PaymentModal({ pledges, onClose, onSubmit }: PaymentModalProps) 
               <>
                 <Upload className="w-10 h-10 text-slate-400 mb-2" />
                 <p className="font-medium text-slate-700">לחץ כאן לבחירת קובץ</p>
-                <p className="text-sm text-slate-500 mt-1">תומך בתמונות ו-PDF</p>
+                <p className="text-sm text-slate-500 mt-1">JPG, PNG או WebP עד 5MB</p>
               </>
             )}
           </div>
@@ -102,10 +104,11 @@ export function PaymentModal({ pledges, onClose, onSubmit }: PaymentModalProps) 
         
         <div className="p-4 border-t border-slate-200 bg-white">
           <button
-            onClick={() => onSubmit(method, file)}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+            onClick={async () => { setSubmitting(true); try { await onSubmit(method, file); } finally { setSubmitting(false); } }}
+            disabled={submitting}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:cursor-wait disabled:opacity-60"
           >
-            שלח אסמכתא לאישור גבאי
+            {submitting ? 'שומר אסמכתא...' : 'שלח אסמכתא לאישור גבאי'}
           </button>
         </div>
       </div>

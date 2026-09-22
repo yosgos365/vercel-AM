@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { Login } from "./components/Login";
 import { Registration } from "./components/Registration";
 import { UserDashboard } from "./components/UserDashboard";
+import { DonationsSeatingView } from "./DonationsSeatingView";
 import type { DonationDashboardData, DonationUser, Pledge } from "./types";
 
 const ADMIN_TOKEN_KEY = "ahavat-menachem-donations-admin-token";
@@ -55,6 +57,8 @@ const fileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
 });
 
 export function DonationApp() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [token, setToken] = useState(safeToken);
   const [adminRole, setAdminRole] = useState<AdminRole>(savedAdminRole);
   const [data, setData] = useState<DonationDashboardData>({ users: [], pledges: [] });
@@ -64,6 +68,12 @@ export function DonationApp() {
   const [registeringPhone, setRegisteringPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+
+  const showNotice = useCallback((message: string, tone: "success" | "error" = "success") => {
+    setNotice({ message, tone });
+    window.setTimeout(() => setNotice(current => current?.message === message ? null : current), 4500);
+  }, []);
 
   const request = useCallback(async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, {
@@ -170,12 +180,15 @@ export function DonationApp() {
     }
   };
 
-  const mutate = async (url: string, method: "POST" | "PUT" | "DELETE", body?: unknown) => {
+  const mutate = async (url: string, method: "POST" | "PUT" | "DELETE", body?: unknown, successMessage?: string) => {
     try {
       await request(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
       await refresh();
+      if (successMessage) showNotice(successMessage);
+      return true;
     } catch (cause) {
-      alert(cause instanceof Error ? cause.message : "הפעולה נכשלה");
+      showNotice(cause instanceof Error ? cause.message : "הפעולה נכשלה", "error");
+      return false;
     }
   };
 
@@ -237,14 +250,14 @@ export function DonationApp() {
       await userRequest("/api/donations/me", { method: "PUT", body: JSON.stringify(user) });
       await refreshUser();
     } catch (cause) {
-      alert(cause instanceof Error ? cause.message : "עדכון הפרטים נכשל");
+      showNotice(cause instanceof Error ? cause.message : "עדכון הפרטים נכשל", "error");
     }
   };
 
   const submitCurrentUserPayment = async (pledgeIds: string[], method: "paybox" | "bank", file: File | null) => {
     if (!file) {
-      alert("יש לצרף אסמכתא לתשלום");
-      return;
+      showNotice("יש לצרף אסמכתא לתשלום", "error");
+      return false;
     }
     try {
       if (file.size > 5 * 1024 * 1024) throw new Error("גודל תמונת האסמכתא המרבי הוא 5MB");
@@ -253,8 +266,29 @@ export function DonationApp() {
         body: JSON.stringify({ pledgeIds, paymentMethod: method, receiptImage: await fileAsDataUrl(file) }),
       });
       await refreshUser();
+      showNotice("הדיווח והתמונה נשמרו ונשלחו לאישור הגבאי.");
+      return true;
     } catch (cause) {
-      alert(cause instanceof Error ? cause.message : "דיווח התשלום נכשל");
+      showNotice(cause instanceof Error ? cause.message : "דיווח התשלום נכשל", "error");
+      return false;
+    }
+  };
+
+  const viewReceiptImage = async (receiptImage?: string) => {
+    if (!receiptImage) return showNotice("לא צורפה אסמכתא לתשלום זה.", "error");
+    try {
+      // Navigation, rather than fetch()+Blob, lets the browser follow the
+      // short-lived Firebase signed URL without being blocked by CORS.
+      const target = `${receiptImage}?token=${encodeURIComponent(token)}`;
+      const link = document.createElement("a");
+      link.href = target;
+      link.target = "_blank";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : "פתיחת האסמכתא נכשלה", "error");
     }
   };
 
@@ -270,6 +304,12 @@ export function DonationApp() {
     );
   }
 
+  const noticeBanner = notice && <div role="status" className={`fixed inset-x-4 bottom-5 z-[200] mx-auto max-w-md rounded-xl px-4 py-3 text-center text-sm font-bold shadow-xl ${notice.tone === "success" ? "bg-emerald-700 text-white" : "bg-rose-700 text-white"}`}>{notice.message}</div>;
+
+  if (userToken && userData && location.pathname.endsWith("/seating")) {
+    return <DonationsSeatingView onBack={() => navigate("/donations", { replace: true })} />;
+  }
+
   if (userToken && userData) {
     return (
       <div dir="rtl">
@@ -277,9 +317,10 @@ export function DonationApp() {
           user={userData.user}
           pledges={userData.pledges}
           onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
-          onSubmitPayment={(pledgeIds, method, file) => void submitCurrentUserPayment(pledgeIds, method, file)}
+          onSubmitPayment={submitCurrentUserPayment}
           onUpdateUser={(user) => void updateCurrentUser(user)}
         />
+        {noticeBanner}
       </div>
     );
   }
@@ -319,22 +360,25 @@ export function DonationApp() {
           setToken("");
           setAdminRole("admin");
         }}
-        onApprovePledge={(pledgeId, approvalNote) => void mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST", { approvalNote })}
-        onAddPledge={(pledge: Partial<Pledge>, name, phone) => void mutate("/api/donations/admin/pledges", "POST", {
+        onApprovePledge={(pledgeId, approvalNote) => mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST", { approvalNote }, "התשלום אושר ונשמר בהצלחה.")}
+        onSavePledgeNote={(pledgeId, approvalNote) => mutate(`/api/donations/admin/pledges/${pledgeId}/note`, "PUT", { approvalNote }, "הערת הגבאי נשמרה.")}
+        onViewReceipt={viewReceiptImage}
+        onAddPledge={(pledge: Partial<Pledge>, name, phone) => mutate("/api/donations/admin/pledges", "POST", {
           name,
           phone,
           type: pledge.type,
           amount: pledge.amount,
           date: pledge.date,
-        })}
-        onUpdateUser={(userId, name, phone) => void mutate(`/api/donations/admin/users/${userId}`, "PUT", { name, phone })}
-        onAddUser={(name, phone) => void mutate("/api/donations/admin/users", "POST", { name, phone })}
-        onDeleteUser={(userId) => void mutate(`/api/donations/admin/users/${userId}`, "DELETE")}
+          approvalNote: pledge.approvalNote,
+        }, "ההתחייבות נוספה בהצלחה.")}
+        onUpdateUser={(userId, name, phone) => mutate(`/api/donations/admin/users/${userId}`, "PUT", { name, phone }, "פרטי המתפלל נשמרו.")}
+        onAddUser={(name, phone) => mutate("/api/donations/admin/users", "POST", { name, phone }, "המתפלל נוסף בהצלחה.")}
+        onDeleteUser={(userId) => mutate(`/api/donations/admin/users/${userId}`, "DELETE", undefined, "המתפלל נמחק.")}
         isDeveloper={adminRole === "developer"}
         onChangeAdminPassword={async (newPassword) => {
           await request("/api/admin/change-password", { method: "POST", body: JSON.stringify({ newPassword }) });
         }}
-        onDeletePledge={(pledgeId) => mutate(`/api/donations/developer/pledges/${pledgeId}`, "DELETE")}
+        onDeletePledge={(pledgeId) => mutate(`/api/donations/developer/pledges/${pledgeId}`, "DELETE", undefined, "ההתחייבות נמחקה.")}
         seating={seating}
         onUpdateSeat={adminRole ? async (seatId, owner) => {
           await request(`/api/admin/seat/${seatId}`, {
@@ -344,6 +388,7 @@ export function DonationApp() {
           await refreshSeating();
         } : undefined}
       />
+      {noticeBanner}
     </div>
   );
 }

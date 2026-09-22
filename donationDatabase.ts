@@ -56,6 +56,8 @@ const pledgeFromData = (documentId: string, data: Record<string, unknown>): Pled
   paidAt: asString(data.paidAt) || undefined,
   approvedAt: asString(data.approvedAt) || undefined,
   receiptNumber: asString(data.receiptNumber) || undefined,
+  paymentBatchId: asString(data.paymentBatchId) || undefined,
+  receiptPledgeIds: asArray<string>(data.receiptPledgeIds).filter((value) => typeof value === "string"),
   approvalNote: asString(data.approvalNote) || undefined,
   createdAt: asTime(data.createdAt),
   updatedAt: asTime(data.updatedAt),
@@ -156,7 +158,7 @@ export async function deleteDonationPledge(pledgeId: string): Promise<Pledge> {
   return pledge;
 }
 
-export async function createDonationPledge(input: { userId?: string; name: string; phone: string; type: string; amount: number; date?: string }): Promise<Pledge> {
+export async function createDonationPledge(input: { userId?: string; name: string; phone: string; type: string; amount: number; date?: string; approvalNote?: string }): Promise<Pledge> {
   const name = asString(input.name);
   const phone = asString(input.phone);
   const type = asString(input.type) || "אחר";
@@ -179,6 +181,7 @@ export async function createDonationPledge(input: { userId?: string; name: strin
     amount,
     date: input.date || new Date().toISOString().slice(0, 10),
     status: "open",
+    approvalNote: asString(input.approvalNote).slice(0, 500) || undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -191,6 +194,7 @@ export async function markDonationPayment(pledgeIds: string[], paymentMethod: Pa
   if (!pledgeIds.length) throw new Error("לא נבחרו התחייבויות לתשלום");
   const db = await donationFirestore();
   const now = new Date().toISOString();
+  const paymentBatchId = id();
   const batch = db.batch();
   for (const pledgeId of [...new Set(pledgeIds)]) {
     const reference = db.collection(PLEDGES).doc(pledgeId);
@@ -198,7 +202,7 @@ export async function markDonationPayment(pledgeIds: string[], paymentMethod: Pa
     if (!snapshot.exists) throw new Error("אחת ההתחייבויות לא נמצאה");
     const pledge = pledgeFromData(snapshot.id, snapshot.data()!);
     if (pledge.status !== "open") throw new Error("ניתן לדווח תשלום רק על התחייבות פתוחה");
-    batch.update(reference, { status: "pending", paymentMethod, receiptImage, paidAt: now, updatedAt: Date.now() });
+    batch.update(reference, { status: "pending", paymentMethod, receiptImage, paidAt: now, paymentBatchId, updatedAt: Date.now() });
   }
   await batch.commit();
 }
@@ -212,15 +216,44 @@ export async function approveDonationPledge(pledgeId: string, approvalNote = "")
     if (!snapshot.exists) throw new Error("ההתחייבות לא נמצאה");
     const pledge = pledgeFromData(snapshot.id, snapshot.data()!);
     if (pledge.status !== "pending") throw new Error("ניתן לאשר רק התחייבות שממתינה לאישור");
+    const paymentBatch = pledge.paymentBatchId
+      ? await transaction.get(db.collection(PLEDGES).where("paymentBatchId", "==", pledge.paymentBatchId))
+      : null;
+    const related = paymentBatch
+      ? paymentBatch.docs.map(document => pledgeFromData(document.id, document.data())).filter(item => item.status === "pending")
+      : [pledge];
+    const receiptPledgeIds = related.map(item => item.id);
     const settings = db.collection(SETTINGS).doc("receiptCounter");
     const settingsSnapshot = await transaction.get(settings);
     const nextNumber = Number(settingsSnapshot.data()?.lastNumber || 10000) + 1;
     const approvedAt = new Date().toISOString();
-    approved = { ...pledge, status: "paid", approvedAt, receiptNumber: String(nextNumber), approvalNote: approvalNote || undefined, updatedAt: Date.now() };
-    transaction.update(reference, { status: "paid", approvedAt, receiptNumber: String(nextNumber), approvalNote: approvalNote || FieldValue.delete(), updatedAt: approved.updatedAt });
+    const updatedAt = Date.now();
+    for (const relatedPledge of related) {
+      transaction.update(db.collection(PLEDGES).doc(relatedPledge.id), {
+        status: "paid",
+        approvedAt,
+        receiptNumber: String(nextNumber),
+        receiptPledgeIds,
+        ...(relatedPledge.id === pledgeId ? { approvalNote: approvalNote || FieldValue.delete() } : {}),
+        updatedAt,
+      });
+    }
+    approved = { ...pledge, status: "paid", approvedAt, receiptNumber: String(nextNumber), receiptPledgeIds, approvalNote: approvalNote || pledge.approvalNote, updatedAt };
     transaction.set(settings, { lastNumber: nextNumber, updatedAt: Date.now() }, { merge: true });
   });
   return approved!;
+}
+
+/** A manager can keep an internal note on every pledge, before or after payment. */
+export async function updateDonationPledgeNote(pledgeId: string, approvalNote: string): Promise<Pledge> {
+  const db = await donationFirestore();
+  const reference = db.collection(PLEDGES).doc(pledgeId);
+  const snapshot = await reference.get();
+  if (!snapshot.exists) throw new Error("ההתחייבות לא נמצאה");
+  const note = approvalNote.trim().slice(0, 500);
+  await reference.set({ approvalNote: note || FieldValue.delete(), updatedAt: Date.now() }, { merge: true });
+  const pledge = pledgeFromData(snapshot.id, snapshot.data()!);
+  return { ...pledge, approvalNote: note || undefined, updatedAt: Date.now() };
 }
 
 export async function getDonationPledgesForUser(userId: string) {
