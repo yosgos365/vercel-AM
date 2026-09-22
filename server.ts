@@ -33,6 +33,7 @@ const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
 const HEBREW_PDF_FONT_PATH = path.join(process.cwd(), "assets", "fonts", "NotoSansHebrew-Regular.ttf");
+const DONATION_LOGO_PATH = path.join(process.cwd(), "public", "logo-no-text.jpeg");
 
 const firebaseStorageBucket = () => {
   // The Firebase Admin app is initialized together with Firestore before any
@@ -552,7 +553,10 @@ app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
     const total = receiptPledges.reduce((sum, pledge) => sum + pledge.amount, 0);
     const method = receiptPledges[0].paymentMethod === "paybox" ? "PayBox" : receiptPledges[0].paymentMethod === "bank" ? "העברה בנקאית" : "מזומן";
     const reverseHebrew = (value: string) => Array.from(value).reverse().join("");
-    const font = await fs.readFile(HEBREW_PDF_FONT_PATH);
+    const [font, logo] = await Promise.all([
+      fs.readFile(HEBREW_PDF_FONT_PATH),
+      fs.readFile(DONATION_LOGO_PATH),
+    ]);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="payment-receipt-${receiptNumber}.pdf"; filename*=UTF-8''${encodeURIComponent(`אישור תשלום-${receiptNumber}.pdf`)}`);
@@ -572,8 +576,9 @@ app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
       divider(y + 27);
     };
 
-    writeRtl("אחוות מנחם", 72, 24, "#1d4ed8");
-    writeRtl("אישור תשלום / אישור תרומה", 108, 13, "#475569");
+    document.image(logo, 54, 58, { fit: [58, 58] });
+    writeRtl("אחוות מנחם", 70, 24, "#1d4ed8");
+    writeRtl("אישור תשלום / אישור תרומה", 106, 13, "#475569");
     divider(136);
     writeRtl("מספר אישור תשלום:", 153, 13, "#1e293b");
     document.fillColor("#1e293b").fontSize(13).text(receiptNumber, 54, 153, { width: 190, align: "right" });
