@@ -554,6 +554,9 @@ app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
     const owner = isManager ? dashboard!.users.find((user) => user.id === ownerId) : await getDonationUser(ownerId);
     const total = receiptPledges.reduce((sum, pledge) => sum + pledge.amount, 0);
     const method = receiptPledges[0].paymentMethod === "paybox" ? "PayBox" : receiptPledges[0].paymentMethod === "bank" ? "העברה בנקאית" : "מזומן";
+    // PDFKit paints glyphs left-to-right. Reversing Hebrew strings supplies
+    // their visual RTL order; LTR values such as dates and PayBox bypass this
+    // helper at their individual call sites.
     const reverseHebrew = (value: string) => Array.from(value).reverse().join("");
     const [font, logo] = await Promise.all([
       fs.readFile(HEBREW_PDF_FONT_PATH),
