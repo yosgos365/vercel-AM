@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
 import { Home } from '../../pages/Home';
 import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon, MessageSquarePlus } from 'lucide-react';
-import html2canvas from 'html2canvas';
 
 interface AdminDashboardProps {
   user: User;
@@ -40,26 +39,20 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [savingSeat, setSavingSeat] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  const handleDownloadReceipt = async () => {
+  const handleDownloadReceipt = () => {
     const receiptElement = document.getElementById('receipt-content-to-download');
     if (!receiptElement) return;
-    
     try {
-      const canvas = await html2canvas(receiptElement, {
-        scale: 2,
-        backgroundColor: '#ffffff'
-      });
-      
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) throw new Error('Could not generate receipt image');
+      const documentHtml = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>אישור תשלום</title><style>body{margin:0;padding:32px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a}#receipt-content-to-download{max-width:600px;margin:auto;background:#fff;padding:32px;box-sizing:border-box}*{box-sizing:border-box}@media print{body{padding:0;background:#fff}#receipt-content-to-download{max-width:none;margin:0}}</style></head><body>${receiptElement.outerHTML}</body></html>`;
+      const blob = new Blob([documentHtml], { type: 'text/html;charset=utf-8' });
       const image = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = image;
-      link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.png`;
+      link.download = `אישור תשלום-${receiptPledge?.receiptNumber || 'תרומה'}.html`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      setGeneratedReceipt(image);
+      window.setTimeout(() => URL.revokeObjectURL(image), 10_000);
     } catch (err) {
       console.error('Failed to download receipt', err);
       alert('אירעה שגיאה בהורדת האישור תשלום.');
@@ -767,7 +760,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
                 >
                   <Download className="w-4 h-4" />
-                  הורד
+                  הורד אישור
                 </button>
                 <button
                   onClick={() => window.print()}
