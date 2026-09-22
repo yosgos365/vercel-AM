@@ -560,7 +560,10 @@ app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="payment-receipt-${receiptNumber}.pdf"; filename*=UTF-8''${encodeURIComponent(`אישור תשלום-${receiptNumber}.pdf`)}`);
-    const document = new PDFDocument({ size: "A4", margin: 54, info: { Title: `אישור תשלום ${receiptNumber}`, Author: "אחוות מנחם" } });
+    // PDFKit normally starts with Helvetica. Making the embedded Hebrew font
+    // the default avoids a runtime lookup for PDFKit's optional standard-font
+    // files inside a serverless deployment.
+    const document = new PDFDocument({ size: "A4", margin: 54, font: HEBREW_PDF_FONT_PATH, info: { Title: `אישור תשלום ${receiptNumber}`, Author: "אחוות מנחם" } });
     document.registerFont("Hebrew", font);
     document.pipe(res);
     document.font("Hebrew");
