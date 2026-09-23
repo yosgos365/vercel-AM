@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { User, Pledge } from '../types';
 import { Home } from '../../pages/Home';
 import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon, MessageSquarePlus } from 'lucide-react';
+import type { ReceiptPdfAction, ReceiptPdfData } from '../receiptPdf';
 
 interface AdminDashboardProps {
   user: User;
@@ -11,7 +12,11 @@ interface AdminDashboardProps {
   onApprovePledge: (id: string, approvalNote: string) => Promise<boolean>;
   onSavePledgeNote: (id: string, approvalNote: string) => Promise<boolean>;
   onViewReceipt: (receiptImage?: string) => void;
-  onDownloadReceipt: (receiptNumber: string) => void;
+  onDownloadReceipt: (receipt: ReceiptPdfData, action?: ReceiptPdfAction) => void | Promise<void>;
+  onExportFullData: () => void | Promise<void>;
+  onCreateBackup?: () => Promise<boolean>;
+  onLoadBackups?: () => Promise<Array<{ id: string; timestamp: number; requestsCount: number }>>;
+  onRestoreBackup?: (backupId: string) => Promise<boolean>;
   onAddPledge: (pledgeData: Partial<Pledge>, userName: string, phone: string) => Promise<boolean>;
   onUpdateUser: (id: string, name: string, phone: string) => Promise<boolean>;
   onAddUser: (name: string, phone: string) => Promise<boolean>;
@@ -23,10 +28,11 @@ interface AdminDashboardProps {
   onUpdateSeat?: (seatId: string, owner: string) => Promise<void> | void;
 }
 
-export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onSavePledgeNote, onViewReceipt, onDownloadReceipt, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
+export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onSavePledgeNote, onViewReceipt, onDownloadReceipt, onExportFullData, onCreateBackup, onLoadBackups, onRestoreBackup, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users' | 'seating'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
   const [userModal, setUserModal] = useState<{ isOpen: boolean; mode: 'add' | 'edit'; id?: string; name: string; phone: string }>({ isOpen: false, mode: 'add', name: '', phone: '' });
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ isOpen: boolean; id: string; name: string }>({ isOpen: false, id: '', name: '' });
   const [pledgeDeleteModal, setPledgeDeleteModal] = useState<{ isOpen: boolean; id: string; name: string; type: string }>({ isOpen: false, id: '', name: '', type: '' });
@@ -37,10 +43,37 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const [noteModal, setNoteModal] = useState<{ isOpen: boolean; id: string; note: string }>({ isOpen: false, id: '', note: '' });
   const [selectedSeat, setSelectedSeat] = useState<{ id: string; owner: string; status: "available" | "pending" | "taken" } | null>(null);
   const [savingSeat, setSavingSeat] = useState<string | null>(null);
+  const [backupsOpen, setBackupsOpen] = useState(false);
+  const [backups, setBackups] = useState<Array<{ id: string; timestamp: number; requestsCount: number }>>([]);
+  const [backupBusy, setBackupBusy] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  const handleDownloadReceipt = () => {
-    if (receiptPledge?.receiptNumber) onDownloadReceipt(receiptPledge.receiptNumber);
+  const handleDownloadReceipt = async () => {
+    if (!receiptPledge?.receiptNumber || receiptPledges.length === 0) return;
+    setIsDownloadingReceipt(true);
+    try {
+      await onDownloadReceipt({
+        receiptNumber: receiptPledge.receiptNumber,
+        donorName: getUserDetails(receiptPledge.userId)?.name || 'לא ידוע',
+        pledges: receiptPledges,
+      });
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!receiptPledge?.receiptNumber || receiptPledges.length === 0) return;
+    setIsDownloadingReceipt(true);
+    try {
+      await onDownloadReceipt({
+        receiptNumber: receiptPledge.receiptNumber,
+        donorName: getUserDetails(receiptPledge.userId)?.name || 'לא ידוע',
+        pledges: receiptPledges,
+      }, 'print');
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
   };
 
   const pendingPledges = pledges.filter(p => p.status === 'pending');
@@ -62,6 +95,27 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
       setPledgeDeleteModal({ isOpen: true, id: pledge.id, name, type: pledge.type });
       longPressTimer.current = null;
     }, 650);
+  };
+
+  const openBackups = async () => {
+    setBackupsOpen(true);
+    if (onLoadBackups) setBackups(await onLoadBackups());
+  };
+
+  const createBackup = async () => {
+    if (!onCreateBackup) return;
+    setBackupBusy(true);
+    try {
+      if (await onCreateBackup()) setBackups(await onLoadBackups?.() || []);
+    } finally { setBackupBusy(false); }
+  };
+
+  const restoreBackup = async (backupId: string) => {
+    if (!onRestoreBackup || !window.confirm("לשחזר גיבוי זה? נתוני המערכת הנוכחיים יוחלפו.")) return;
+    setBackupBusy(true);
+    try {
+      if (await onRestoreBackup(backupId)) setBackups(await onLoadBackups?.() || []);
+    } finally { setBackupBusy(false); }
   };
 
   const saveAdminPassword = async (event: React.FormEvent) => {
@@ -206,7 +260,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
             </div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-wide">{isDeveloper ? 'ממשק מפתח' : 'ממשק ניהול גבאים'}</h1>
-              <p className="text-slate-300 text-sm">{isDeveloper ? 'גישה לפעולות מפתח' : `שלום, ${user.name}`}</p>
+              <p className="text-slate-300 text-sm">{isDeveloper ? 'שלום מפתח' : 'מנהל מערכת'}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -216,7 +270,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 <span className="hidden sm:inline text-sm font-medium">סיסמה</span>
               </button>
             )}
-            {isDeveloper && <Wrench className="w-5 h-5 text-amber-300" aria-label="מצב מפתח" />}
+            {isDeveloper && <><button onClick={() => void openBackups()} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-white hover:bg-slate-700">גיבויים</button><Wrench className="w-5 h-5 text-amber-300" aria-label="מצב מפתח" /></>}
             <button onClick={onLogout} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors">
               <LogOut className="w-5 h-5" />
               <span className="hidden sm:inline text-sm font-medium">התנתק</span>
@@ -294,17 +348,14 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
               />
             </div>
             
-            {activeTab === 'users' ? (
-              <button onClick={handleExportUsersCSV} className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא מתפללים לאקסל</button>
-            ) : (
-              <button 
-                onClick={handleExportCSV}
-                className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"
-              >
-                <Download className="w-4 h-4" />
-                ייצא לאקסל
-              </button>
-            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              {activeTab === 'users' ? (
+                <button onClick={handleExportUsersCSV} className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא רשימה מסוננת</button>
+              ) : (
+                <button onClick={handleExportCSV} className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא מסונן</button>
+              )}
+              <button onClick={() => void onExportFullData()} className="px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא מלא לאקסל</button>
+            </div>
           </div>
         )}
 
@@ -540,11 +591,25 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
         </div>
       </main>
 
+      {backupsOpen && isDeveloper && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4"><div><h3 className="text-lg font-bold text-slate-900">גיבויי מערכת</h3><p className="mt-1 text-sm text-slate-600">כל גיבוי כולל מושבים, מתפללים, התחייבויות ואסמכתאות.</p></div><button type="button" onClick={() => setBackupsOpen(false)} className="text-sm font-bold text-slate-500 hover:text-slate-900">סגירה</button></div>
+            <button type="button" disabled={backupBusy} onClick={() => void createBackup()} className="mt-5 w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60">{backupBusy ? 'מבצע פעולה...' : 'צור גיבוי כעת'}</button>
+            <div className="mt-5 max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+              {backups.length === 0 ? <p className="p-4 text-center text-sm text-slate-500">אין עדיין גיבויים להצגה.</p> : backups.map((backup) => <div key={backup.id} className="flex items-center justify-between gap-3 p-3 text-sm"><span>{new Date(backup.timestamp).toLocaleString('he-IL')}</span><button type="button" disabled={backupBusy} onClick={() => void restoreBackup(backup.id)} className="font-bold text-rose-700 hover:underline disabled:opacity-60">שחזר</button></div>)}
+            </div>
+          </div>
+        </div>
+      )}
+
       {approvalModal.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
-          <form onSubmit={(event) => { event.preventDefault(); onApprovePledge(approvalModal.id, approvalModal.note.trim()); setApprovalModal({ isOpen: false, id: '', note: '' }); }} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <form onSubmit={async (event) => { event.preventDefault(); if (await onApprovePledge(approvalModal.id, approvalModal.note.trim())) setApprovalModal({ isOpen: false, id: '', note: '' }); }} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-bold text-slate-900">אישור תשלום</h3>
-            <p className="mt-1 text-sm text-slate-600">לאחר האישור יופק מספר אישור תשלום. הערות גבאי מנוהלות בנפרד בכל שורה.</p>
+            <p className="mt-1 text-sm text-slate-600">לאחר האישור יופק מספר אישור תשלום. אפשר להוסיף או לעדכן הערת גבאי כבר בשמירה זו.</p>
+            <label className="mt-4 block text-sm font-bold text-slate-700">הערת גבאי <span className="font-normal text-slate-400">(לא חובה)</span></label>
+            <textarea autoFocus value={approvalModal.note} onChange={(event) => setApprovalModal({ ...approvalModal, note: event.target.value })} maxLength={500} rows={3} placeholder="למשל: נבדקה ההעברה" className="mt-1 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600" />
             <div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setApprovalModal({ isOpen: false, id: '', note: '' })} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">ביטול</button><button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">אשר תשלום</button></div>
           </form>
         </div>
@@ -740,14 +805,16 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
               <h3 className="font-bold text-slate-800">הדפסת אישור תשלום</h3>
               <div className="flex gap-2">
                 <button
-                  onClick={handleDownloadReceipt}
-                  className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                  onClick={() => void handleDownloadReceipt()}
+                  disabled={isDownloadingReceipt}
+                  className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1 disabled:cursor-wait disabled:opacity-70"
                 >
                   <Download className="w-4 h-4" />
-                  הורד PDF
+                  {isDownloadingReceipt ? 'מכין PDF…' : 'הורד PDF'}
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => void handlePrintReceipt()}
+                  disabled={isDownloadingReceipt}
                   className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
                 >
                   <Printer className="w-4 h-4" />

@@ -91,7 +91,9 @@ const DB_PATH = path.join(ROOT, "synagogue.db");
 const LEGACY_PATH = path.join(ROOT, "database.json");
 const BACKUP_DIR = path.join(ROOT, "backups");
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
-const MAX_BACKUPS = 30;
+// Keep one full daily version for a full year. Each backup is immutable and
+// can be restored only through the developer area.
+const MAX_BACKUPS = 365;
 
 const israelDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -363,12 +365,12 @@ export async function backupDatabase() {
   await fs.copyFile(DB_PATH, backup);
   const entries = await fs.readdir(BACKUP_DIR);
   const backups = (await Promise.all(entries.filter(name => name.endsWith(".db")).map(async name => ({ name, stat: await fs.stat(path.join(BACKUP_DIR, name)) })))).sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-  await Promise.all(backups.slice(30).map(item => fs.unlink(path.join(BACKUP_DIR, item.name))));
+  await Promise.all(backups.slice(MAX_BACKUPS).map(item => fs.unlink(path.join(BACKUP_DIR, item.name))));
 }
 
-// A backup is a complete snapshot of the seating data (not payment images,
-// which remain private files in Firebase Storage). One snapshot is kept per
-// Israel calendar day and only the 30 newest snapshots are retained.
+// This snapshot holds the complete seating system. The donations snapshot is
+// written alongside it by the server under the same backup ID, so both parts
+// are restored together. One version per Israel calendar day is retained.
 export async function createApplicationBackup(): Promise<BackupSummary> {
   const state = structuredClone(readApplicationState());
   const date = israelDate();

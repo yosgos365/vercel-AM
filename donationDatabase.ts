@@ -8,6 +8,11 @@ import type { DonationDashboardData, DonationUser, PaymentMethod, Pledge } from 
 const USERS = "donationUsers";
 const PLEDGES = "donationPledges";
 const SETTINGS = "donationSettings";
+// A separate document per normalized number makes the uniqueness check work
+// even when two registrations reach Firestore at exactly the same time.
+const PHONE_INDEX = "donationPhoneIndex";
+const BACKUPS = "donationBackups";
+const BACKUP_RETENTION_DAYS = 365;
 
 let firestorePromise: Promise<ReturnType<typeof getFirestore>> | null = null;
 
@@ -65,6 +70,94 @@ const pledgeFromData = (documentId: string, data: Record<string, unknown>): Pled
 
 const normalizedPhone = (phone: string) => phone.replace(/\D/g, "");
 const isDonationPhone = (phone: string) => /^(?:05\d{8}|050)$/.test(normalizedPhone(phone));
+const phoneIndexId = (phone: string) => crypto.createHash("sha256").update(normalizedPhone(phone)).digest("hex");
+
+type ReceiptBackupCopier = (receiptImage: string, pledgeId: string) => Promise<string>;
+
+const commitWrites = async (db: Awaited<ReturnType<typeof donationFirestore>>, writes: Array<(batch: ReturnType<typeof db.batch>) => void>) => {
+  for (let start = 0; start < writes.length; start += 400) {
+    const batch = db.batch();
+    writes.slice(start, start + 400).forEach((write) => write(batch));
+    await batch.commit();
+  }
+};
+
+const clearBackup = async (db: Awaited<ReturnType<typeof donationFirestore>>, reference: FirebaseFirestore.DocumentReference) => {
+  for (const collectionName of ["users", "pledges", "settings"]) {
+    const snapshot = await reference.collection(collectionName).get();
+    await commitWrites(db, snapshot.docs.map((document) => (batch) => batch.delete(document.ref)));
+  }
+  await reference.delete();
+};
+
+/**
+ * Saves a separate, restorable snapshot of every donation record. Receipt
+ * images can be copied by the server callback into protected backup storage.
+ */
+export async function createDonationBackup(backupId: string, date: string, copyReceiptImage?: ReceiptBackupCopier) {
+  const db = await donationFirestore();
+  const reference = db.collection(BACKUPS).doc(backupId);
+  const existing = await reference.get();
+  if (existing.data()?.status === "complete") return existing.data();
+  if (existing.exists) await clearBackup(db, reference);
+
+  const [users, pledges, settings] = await Promise.all([
+    db.collection(USERS).get(),
+    db.collection(PLEDGES).get(),
+    db.collection(SETTINGS).get(),
+  ]);
+  const pledgeData = await Promise.all(pledges.docs.map(async (document) => {
+    const data = { ...document.data() };
+    if (copyReceiptImage && typeof data.receiptImage === "string" && data.receiptImage) {
+      data.receiptImage = await copyReceiptImage(data.receiptImage, document.id);
+    }
+    return { id: document.id, data };
+  }));
+
+  await reference.set({ id: backupId, date, timestamp: Date.now(), status: "writing" });
+  await commitWrites(db, [
+    ...users.docs.map((document) => (batch) => batch.set(reference.collection("users").doc(document.id), document.data())),
+    ...pledgeData.map((document) => (batch) => batch.set(reference.collection("pledges").doc(document.id), document.data)),
+    ...settings.docs.map((document) => (batch) => batch.set(reference.collection("settings").doc(document.id), document.data())),
+  ]);
+  const complete = { id: backupId, date, timestamp: Date.now(), status: "complete", usersCount: users.size, pledgesCount: pledges.size };
+  await reference.set(complete, { merge: true });
+
+  const allBackups = await db.collection(BACKUPS).orderBy("timestamp", "desc").get();
+  for (const oldBackup of allBackups.docs.slice(BACKUP_RETENTION_DAYS)) await clearBackup(db, oldBackup.ref);
+  return complete;
+}
+
+/** Restores donation users, pledges, receipt counter and protected image references from one snapshot. */
+export async function restoreDonationBackup(backupId: string) {
+  const db = await donationFirestore();
+  const reference = db.collection(BACKUPS).doc(backupId);
+  const metadata = await reference.get();
+  if (metadata.data()?.status !== "complete") throw new Error("גיבוי הנדרים אינו זמין");
+  const [backupUsers, backupPledges, backupSettings, currentUsers, currentPledges, currentSettings, currentIndex] = await Promise.all([
+    reference.collection("users").get(),
+    reference.collection("pledges").get(),
+    reference.collection("settings").get(),
+    db.collection(USERS).get(),
+    db.collection(PLEDGES).get(),
+    db.collection(SETTINGS).get(),
+    db.collection(PHONE_INDEX).get(),
+  ]);
+  await commitWrites(db, [
+    ...currentUsers.docs.map((document) => (batch) => batch.delete(document.ref)),
+    ...currentPledges.docs.map((document) => (batch) => batch.delete(document.ref)),
+    ...currentSettings.docs.map((document) => (batch) => batch.delete(document.ref)),
+    ...currentIndex.docs.map((document) => (batch) => batch.delete(document.ref)),
+    ...backupUsers.docs.map((document) => (batch) => {
+      const data = document.data();
+      batch.set(db.collection(USERS).doc(document.id), data);
+      const phone = asString(data.phone);
+      if (phone) batch.set(db.collection(PHONE_INDEX).doc(phoneIndexId(phone)), { userId: document.id, phoneNormalized: normalizedPhone(phone), restoredAt: Date.now() });
+    }),
+    ...backupPledges.docs.map((document) => (batch) => batch.set(db.collection(PLEDGES).doc(document.id), document.data())),
+    ...backupSettings.docs.map((document) => (batch) => batch.set(db.collection(SETTINGS).doc(document.id), document.data())),
+  ]);
+}
 
 export async function getDonationDashboard(): Promise<DonationDashboardData> {
   const db = await donationFirestore();
@@ -82,6 +175,14 @@ export async function findDonationUserByPhone(phone: string): Promise<DonationUs
   const normalized = normalizedPhone(phone);
   if (!normalized) return null;
   const db = await donationFirestore();
+  const indexed = await db.collection(PHONE_INDEX).doc(phoneIndexId(phone)).get();
+  const indexedUserId = asString(indexed.data()?.userId);
+  if (indexed.exists && indexedUserId) {
+    const user = await db.collection(USERS).doc(indexedUserId).get();
+    if (user.exists) return donationUserFromData(user.id, user.data()!);
+  }
+  // Existing records created before the phone index was added remain
+  // discoverable. Any subsequent edit or new registration creates the index.
   const snapshot = await db.collection(USERS).where("phoneNormalized", "==", normalized).limit(1).get();
   return snapshot.empty ? null : donationUserFromData(snapshot.docs[0].id, snapshot.docs[0].data());
 }
@@ -91,8 +192,6 @@ export async function createDonationUser(input: Pick<DonationUser, "name" | "pho
   const phone = asString(input.phone);
   if (!name || !phone) throw new Error("יש למלא שם ומספר טלפון");
   if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
-  const existing = await findDonationUserByPhone(phone);
-  if (existing) throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
   const now = Date.now();
   const user: DonationUser = {
     id: id(),
@@ -106,43 +205,75 @@ export async function createDonationUser(input: Pick<DonationUser, "name" | "pho
     updatedAt: now,
   };
   const db = await donationFirestore();
-  await db.collection(USERS).doc(user.id).set({ ...user, phoneNormalized: normalizedPhone(phone) });
+  const userReference = db.collection(USERS).doc(user.id);
+  const indexReference = db.collection(PHONE_INDEX).doc(phoneIndexId(phone));
+  const existingByPhone = db.collection(USERS).where("phoneNormalized", "==", normalizedPhone(phone)).limit(1);
+  await db.runTransaction(async transaction => {
+    const [indexSnapshot, usersSnapshot] = await Promise.all([
+      transaction.get(indexReference),
+      transaction.get(existingByPhone),
+    ]);
+    if (indexSnapshot.exists || !usersSnapshot.empty) throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
+    transaction.set(userReference, { ...user, phoneNormalized: normalizedPhone(phone) });
+    transaction.set(indexReference, { userId: user.id, phoneNormalized: normalizedPhone(phone), createdAt: now });
+  });
   return user;
 }
 
 export async function updateDonationUser(userId: string, changes: Partial<Pick<DonationUser, "name" | "phone" | "hebrewDob" | "familyMembers" | "yahrzeits">>): Promise<DonationUser> {
   const db = await donationFirestore();
   const reference = db.collection(USERS).doc(userId);
-  const snapshot = await reference.get();
-  if (!snapshot.exists) throw new Error("המתפלל לא נמצא");
-  const current = donationUserFromData(snapshot.id, snapshot.data()!);
-  const name = changes.name === undefined ? current.name : asString(changes.name);
-  const phone = changes.phone === undefined ? current.phone : asString(changes.phone);
-  if (!name || !phone) throw new Error("יש למלא שם ומספר טלפון");
-  if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
-  if (normalizedPhone(phone) !== normalizedPhone(current.phone)) {
-    const conflicting = await findDonationUserByPhone(phone);
-    if (conflicting && conflicting.id !== userId) throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
-  }
-  const next: DonationUser = {
-    ...current,
-    ...changes,
-    id: userId,
-    name,
-    phone,
-    familyMembers: changes.familyMembers || current.familyMembers,
-    yahrzeits: changes.yahrzeits || current.yahrzeits,
-    updatedAt: Date.now(),
-  };
-  await reference.set({ ...next, phoneNormalized: normalizedPhone(phone) }, { merge: true });
-  return next;
+  let next: DonationUser | null = null;
+  await db.runTransaction(async transaction => {
+    const snapshot = await transaction.get(reference);
+    if (!snapshot.exists) throw new Error("המתפלל לא נמצא");
+    const current = donationUserFromData(snapshot.id, snapshot.data()!);
+    const name = changes.name === undefined ? current.name : asString(changes.name);
+    const phone = changes.phone === undefined ? current.phone : asString(changes.phone);
+    if (!name || !phone) throw new Error("יש למלא שם ומספר טלפון");
+    if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
+    const oldPhone = normalizedPhone(current.phone);
+    const newPhone = normalizedPhone(phone);
+    const newIndexReference = db.collection(PHONE_INDEX).doc(phoneIndexId(phone));
+    if (newPhone !== oldPhone) {
+      const [indexSnapshot, matchingUsers] = await Promise.all([
+        transaction.get(newIndexReference),
+        transaction.get(db.collection(USERS).where("phoneNormalized", "==", newPhone).limit(1)),
+      ]);
+      const indexedUser = asString(indexSnapshot.data()?.userId);
+      if ((indexSnapshot.exists && indexedUser !== userId) || matchingUsers.docs.some(document => document.id !== userId)) {
+        throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
+      }
+      const oldIndexReference = db.collection(PHONE_INDEX).doc(phoneIndexId(current.phone));
+      const oldIndex = await transaction.get(oldIndexReference);
+      if (oldIndex.exists && asString(oldIndex.data()?.userId) === userId) transaction.delete(oldIndexReference);
+      transaction.set(newIndexReference, { userId, phoneNormalized: newPhone, updatedAt: Date.now() });
+    } else {
+      // Backfill the index for records created before this protection existed.
+      transaction.set(newIndexReference, { userId, phoneNormalized: newPhone, updatedAt: Date.now() }, { merge: true });
+    }
+    next = {
+      ...current,
+      ...changes,
+      id: userId,
+      name,
+      phone,
+      familyMembers: changes.familyMembers || current.familyMembers,
+      yahrzeits: changes.yahrzeits || current.yahrzeits,
+      updatedAt: Date.now(),
+    };
+    transaction.set(reference, { ...next, phoneNormalized: newPhone }, { merge: true });
+  });
+  return next!;
 }
 
 export async function deleteDonationUser(userId: string) {
   const db = await donationFirestore();
+  const user = await db.collection(USERS).doc(userId).get();
   const pledges = await db.collection(PLEDGES).where("userId", "==", userId).get();
   const batch = db.batch();
   batch.delete(db.collection(USERS).doc(userId));
+  if (user.exists) batch.delete(db.collection(PHONE_INDEX).doc(phoneIndexId(asString(user.data()?.phone))));
   pledges.docs.forEach(pledge => batch.delete(pledge.ref));
   await batch.commit();
 }

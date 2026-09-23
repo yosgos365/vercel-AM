@@ -89,4 +89,19 @@ button { cursor: pointer; }
     -webkit-print-color-adjust: exact;
     font-family: "Noto Sans Hebrew", Arial, sans-serif;
   }
+
+  body.printing-receipt #user-receipt-content-to-download,
+  body.printing-receipt #receipt-content-to-download,
+  body.printing-receipt #user-receipt-content-to-download *,
+  body.printing-receipt #receipt-content-to-download * {
+    visibility: visible !important;
+  }
+  body.printing-receipt #user-receipt-content-to-download,
+  body.printing-receipt #receipt-content-to-download {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 18mm !important;
+    box-sizing: border-box;
+  }
 }

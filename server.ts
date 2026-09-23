@@ -4,11 +4,10 @@ import crypto from "node:crypto";
 import path from "path";
 import fs from "fs/promises";
 import bodyParser from "body-parser";
-import PDFDocument from "pdfkit";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import { addSeatAudit, attemptLogin, clearAuditLog, createApplicationBackup, createDeveloperAdminSession, createRequest, findLastYearUser, getDashboardData, getSeatStatuses, initDatabase, isValidSession, listApplicationBackups, readApplicationState, restoreApplicationBackup, revokeSession, setPassword, writeApplicationState } from "./database";
-import { approveDonationPledge, createDonationPledge, createDonationUser, deleteDonationPledge, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, updateDonationPledgeNote, updateDonationUser } from "./donationDatabase";
+import { approveDonationPledge, createDonationBackup, createDonationPledge, createDonationUser, deleteDonationPledge, deleteDonationUser, donationCollectionsReady, findDonationUserByPhone, getDonationDashboard, getDonationPledgesForUser, getDonationUser, markDonationPayment, restoreDonationBackup, updateDonationPledgeNote, updateDonationUser } from "./donationDatabase";
 import { SEATS } from "./src/MapData";
 
 export const app = express();
@@ -32,10 +31,6 @@ const DONATION_USER_SESSION_SECRET = process.env.DONATION_USER_SESSION_SECRET ||
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const FIREBASE_IMAGE_PREFIX = "firebase:";
 const FIREBASE_IMAGE_TOKEN_PREFIX = "firebase-";
-// Heebo includes Hebrew, Latin, numerals and the ₪ sign in one embeddable font.
-// That prevents missing-glyph squares in payment amounts and receipt numbers.
-const HEBREW_PDF_FONT_PATH = path.join(process.cwd(), "assets", "fonts", "Heebo-Variable.ttf");
-const DONATION_LOGO_PATH = path.join(process.cwd(), "public", "logo-no-text.jpeg");
 
 const firebaseStorageBucket = () => {
   // The Firebase Admin app is initialized together with Firestore before any
@@ -130,6 +125,65 @@ const israelToday = () => {
   const value = (type: string) => parts.find((part) => part.type === type)?.value || "";
   return `${value("year")}-${value("month")}-${value("day")}`;
 };
+
+const firebaseImageUrlForPath = (prefix: "/api/payment-images/" | "/api/donations/receipt-images/", objectName: string) =>
+  `${prefix}${FIREBASE_IMAGE_TOKEN_PREFIX}${Buffer.from(objectName).toString("base64url")}`;
+
+const copyDonationReceiptToBackup = async (receiptImage: string, backupId: string, pledgeId: string) => {
+  const sourcePath = firebaseImagePathFromUrl(receiptImage);
+  const bucket = firebaseStorageBucket();
+  // Keep a legacy reference rather than aborting every nightly backup because
+  // of one pre-Firebase receipt. Firebase-backed images are copied in full.
+  if (!sourcePath) return receiptImage;
+  if (!bucket) throw new Error("לא ניתן לגבות את תמונת האסמכתא");
+  const filename = sourcePath.split("/").pop() || `${pledgeId}.jpg`;
+  const destination = `application-backups/${backupId}/donation-receipts/${pledgeId}-${filename}`;
+  await bucket.file(sourcePath).copy(bucket.file(destination));
+  return firebaseImageUrlForPath("/api/donations/receipt-images/", destination);
+};
+
+const createCompleteApplicationBackup = async () => {
+  const seatingBackup = await createApplicationBackup();
+  const donationsBackup = await createDonationBackup(
+    seatingBackup.id,
+    seatingBackup.date,
+    (receiptImage, pledgeId) => copyDonationReceiptToBackup(receiptImage, seatingBackup.id, pledgeId),
+  );
+  return { ...seatingBackup, donations: donationsBackup };
+};
+
+const israelHour = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  return Number(parts.find((part) => part.type === "hour")?.value || -1);
+};
+
+const excelText = (value: unknown) => String(value ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/\"/g, "&quot;");
+
+const excelDate = (value: unknown) => {
+  if (!value) return "";
+  const date = new Date(Number(value));
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("he-IL");
+};
+
+const donationStatus = (status: string) => status === "paid" ? "שולם" : status === "pending" ? "ממתין לאישור" : "לא שולם";
+const donationPaymentMethod = (method?: string) => method === "paybox" ? "PayBox" : method === "bank" ? "העברה בנקאית" : method === "cash" ? "מזומן" : "";
+const spreadsheetXml = (sheets: Array<{ name: string; headers: string[]; rows: unknown[][] }>) => `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles><Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#E0E7FF" ss:Pattern="Solid"/></Style></Styles>
+  ${sheets.map((sheet) => `<Worksheet ss:Name="${excelText(sheet.name)}"><Table>
+    <Row>${sheet.headers.map((header) => `<Cell ss:StyleID="Header"><Data ss:Type="String">${excelText(header)}</Data></Cell>`).join("")}</Row>
+    ${sheet.rows.map((row) => `<Row>${row.map((cell) => `<Cell><Data ss:Type="String">${excelText(cell)}</Data></Cell>`).join("")}</Row>`).join("")}
+  </Table></Worksheet>`).join("")}
+</Workbook>`;
 
 async function bookingRules(firstName: string, lastName: string, identityConfirmed: boolean) {
   const date = israelToday();
@@ -385,6 +439,76 @@ app.get("/api/donations/admin/dashboard", donationAdminAuth, async (_req, res) =
   }
 });
 
+// A complete, server-generated workbook avoids losing records because of a
+// browser filter or a partially loaded client-side table.
+app.get("/api/donations/admin/export.xls", donationAdminAuth, async (_req, res) => {
+  try {
+    const { users, pledges } = await getDonationDashboard();
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const workbook = spreadsheetXml([
+      {
+        name: "מתפללים",
+        headers: ["שם", "טלפון", "תפקיד", "תאריך לידה עברי", "תאריך הצטרפות"],
+        rows: users.map((user) => [
+          user.name,
+          user.phone,
+          user.role === "admin" ? "מנהל" : "מתפלל",
+          user.hebrewDob ? `${user.hebrewDob.day}/${user.hebrewDob.month}/${user.hebrewDob.year}` : "",
+          excelDate(user.createdAt),
+        ]),
+      },
+      {
+        name: "בני משפחה",
+        headers: ["שם מתפלל", "טלפון", "שם בן משפחה", "תאריך לידה עברי"],
+        rows: users.flatMap((user) => user.familyMembers.map((member) => [
+          user.name,
+          user.phone,
+          member.name,
+          member.hebrewDob ? `${member.hebrewDob.day}/${member.hebrewDob.month}/${member.hebrewDob.year}` : "",
+        ])),
+      },
+      {
+        name: "יארצייטים",
+        headers: ["שם מתפלל", "טלפון", "שם הנפטר", "תאריך עברי"],
+        rows: users.flatMap((user) => user.yahrzeits.map((yahrzeit) => [
+          user.name,
+          user.phone,
+          yahrzeit.name,
+          `${yahrzeit.hebrewDate.day}/${yahrzeit.hebrewDate.month}/${yahrzeit.hebrewDate.year}`,
+        ])),
+      },
+      {
+        name: "התחייבויות",
+        headers: ["שם מתפלל", "טלפון", "סוג התחייבות", "סכום", "תאריך", "סטטוס", "דרך תשלום", "מספר אישור", "הערת גבאי", "תאריך דיווח", "תאריך אישור", "אסמכתא הועלתה"],
+        rows: pledges.map((pledge) => {
+          const user = usersById.get(pledge.userId);
+          return [
+            user?.name || "לא ידוע",
+            user?.phone || "",
+            pledge.type,
+            pledge.amount,
+            pledge.date,
+            donationStatus(pledge.status),
+            donationPaymentMethod(pledge.paymentMethod),
+            pledge.receiptNumber || "",
+            pledge.approvalNote || "",
+            pledge.paidAt ? new Date(pledge.paidAt).toLocaleString("he-IL") : "",
+            pledge.approvedAt ? new Date(pledge.approvedAt).toLocaleString("he-IL") : "",
+            pledge.receiptImage ? "כן" : "לא",
+          ];
+        }),
+      },
+    ]);
+    const filename = `דוח-מלא-${israelToday()}.xls`;
+    res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(workbook);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "יצוא הנתונים נכשל" });
+  }
+});
+
 app.post("/api/donations/admin/users", donationAdminAuth, async (req, res) => {
   try {
     res.status(201).json(await createDonationUser(req.body || {}));
@@ -456,6 +580,34 @@ app.delete("/api/donations/developer/pledges/:id", donationDeveloperAuth, async 
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "מחיקת ההתחייבות נכשלה" });
+  }
+});
+
+app.get("/api/donations/developer/backups", donationDeveloperAuth, async (_req, res) => {
+  try {
+    res.json({ backups: await listApplicationBackups() });
+  } catch {
+    res.status(503).json({ error: "לא ניתן לטעון את גרסאות הגיבוי" });
+  }
+});
+
+app.post("/api/donations/developer/backups/create", donationDeveloperAuth, async (_req, res) => {
+  try {
+    res.json({ success: true, backup: await createCompleteApplicationBackup() });
+  } catch (error) {
+    console.error("Donation backup creation failed", error);
+    const details = error instanceof Error ? error.message : "";
+    res.status(503).json({ error: process.env.NODE_ENV === "production" ? "יצירת הגיבוי נכשלה" : `יצירת הגיבוי נכשלה: ${details}` });
+  }
+});
+
+app.post("/api/donations/developer/backups/:id/restore", donationDeveloperAuth, async (req, res) => {
+  try {
+    await restoreDonationBackup(req.params.id);
+    await restoreApplicationBackup(req.params.id);
+    res.json({ success: true });
+  } catch {
+    res.status(404).json({ error: "לא ניתן לשחזר את גרסת הגיבוי" });
   }
 });
 
@@ -532,86 +684,6 @@ app.post("/api/donations/me/payment", donationUserAuth, async (req, res) => {
   }
 });
 
-// A server-generated PDF avoids client-side canvas rendering, which can fail
-// on mobile browsers and inside embedded webviews. The token is short-lived
-// and the route verifies that a customer can download only their own receipt.
-app.get("/api/donations/receipt-pdf/:receiptNumber", async (req, res) => {
-  try {
-    const token = typeof req.query.token === "string" ? req.query.token : "";
-    const isManager = isValidSession(token) || isDonationDeveloperSession(token);
-    const userId = donationUserIdFromToken(token);
-    if (!isManager && !userId) return res.status(401).json({ error: "תוקף ההתחברות פג. יש להתחבר מחדש." });
-
-    const receiptNumber = String(req.params.receiptNumber || "").trim();
-    if (!receiptNumber) return res.status(400).json({ error: "מספר אישור חסר" });
-    const dashboard = isManager ? await getDonationDashboard() : null;
-    const availablePledges = isManager ? dashboard!.pledges : await getDonationPledgesForUser(userId!);
-    const receiptPledges = availablePledges.filter((pledge) => pledge.receiptNumber === receiptNumber);
-    if (!receiptPledges.length) return res.status(404).json({ error: "אישור התשלום לא נמצא" });
-
-    const ownerId = receiptPledges[0].userId;
-    if (!isManager && ownerId !== userId) return res.status(403).json({ error: "אין הרשאה לאישור זה" });
-    const owner = isManager ? dashboard!.users.find((user) => user.id === ownerId) : await getDonationUser(ownerId);
-    const total = receiptPledges.reduce((sum, pledge) => sum + pledge.amount, 0);
-    const method = receiptPledges[0].paymentMethod === "paybox" ? "PayBox" : receiptPledges[0].paymentMethod === "bank" ? "העברה בנקאית" : "מזומן";
-    // PDFKit paints glyphs left-to-right. Reversing Hebrew strings supplies
-    // their visual RTL order; LTR values such as dates and PayBox bypass this
-    // helper at their individual call sites.
-    const reverseHebrew = (value: string) => Array.from(value).reverse().join("");
-    const [font, logo] = await Promise.all([
-      fs.readFile(HEBREW_PDF_FONT_PATH),
-      fs.readFile(DONATION_LOGO_PATH),
-    ]);
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="payment-receipt-${receiptNumber}.pdf"; filename*=UTF-8''${encodeURIComponent(`אישור תשלום-${receiptNumber}.pdf`)}`);
-    // PDFKit normally starts with Helvetica. Making the embedded Hebrew font
-    // the default avoids a runtime lookup for PDFKit's optional standard-font
-    // files inside a serverless deployment.
-    const document = new PDFDocument({ size: "A4", margin: 54, font: HEBREW_PDF_FONT_PATH, info: { Title: `אישור תשלום ${receiptNumber}`, Author: "אחוות מנחם" } });
-    document.registerFont("Hebrew", font);
-    document.pipe(res);
-    document.font("Hebrew");
-
-    const right = 541;
-    const writeRtl = (value: string, y: number, size = 12, color = "#0f172a") => {
-      document.fillColor(color).fontSize(size).text(reverseHebrew(value), 54, y, { width: right - 54, align: "right" });
-    };
-    const divider = (y: number) => document.moveTo(54, y).lineTo(right, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
-    const field = (label: string, value: string, y: number, valueIsLtr = false) => {
-      document.fillColor("#64748b").fontSize(11).text(reverseHebrew(label), 54, y, { width: 180, align: "right" });
-      document.fillColor("#0f172a").fontSize(12).text(valueIsLtr ? value : reverseHebrew(value), 240, y, { width: right - 240, align: "right" });
-      divider(y + 27);
-    };
-
-    document.image(logo, 54, 58, { fit: [58, 58] });
-    writeRtl("אחוות מנחם", 70, 24, "#1d4ed8");
-    writeRtl("אישור תשלום / אישור תרומה", 106, 13, "#475569");
-    divider(136);
-    writeRtl("מספר אישור תשלום:", 153, 13, "#1e293b");
-    document.fillColor("#1e293b").fontSize(13).text(receiptNumber, 54, 153, { width: 190, align: "right" });
-    field("שם התורם:", owner?.name || "לא ידוע", 195);
-    field("תאריך הפקה:", new Intl.DateTimeFormat("he-IL").format(new Date()), 230, true);
-    field("אמצעי תשלום:", method, 265, method === "PayBox");
-    writeRtl("התחייבויות ששולמו:", 310, 12, "#64748b");
-    let y = 337;
-    for (const pledge of receiptPledges) {
-      document.fillColor("#0f172a").fontSize(12).text(reverseHebrew(pledge.type), 54, y, { width: 320, align: "right" });
-      document.fillColor("#0f172a").fontSize(12).text(`₪${pledge.amount}`, 410, y, { width: 131, align: "right" });
-      y += 25;
-    }
-    divider(y + 3);
-    writeRtl("סכום ששולם:", y + 20, 16, "#0f172a");
-    document.fillColor("#0f172a").fontSize(16).text(`₪${total}`, 54, y + 20, { width: 190, align: "right" });
-    divider(y + 54);
-    writeRtl("תודה רבה על תרומתך!", y + 82, 13, "#334155");
-    writeRtl("אישור זה מהווה אישור על התשלום שבוצע.", y + 108, 11, "#64748b");
-    document.end();
-  } catch (error) {
-    if (!res.headersSent) res.status(500).json({ error: error instanceof Error ? error.message : "הפקת אישור התשלום נכשלה" });
-  }
-});
-
 app.post("/api/admin/developer/unlock", (req, res) => {
   const password = typeof req.body.password === "string" ? req.body.password : "";
   const deviceId = typeof req.body.deviceId === "string" ? req.body.deviceId.trim() : "";
@@ -672,12 +744,14 @@ app.get("/api/payment-images/*", servePaymentImage);
 app.get("/api/donations/receipt-images/:fileId", servePaymentImage);
 app.get("/api/donations/receipt-images/*", servePaymentImage);
 
-// Called by Vercel Cron. The idempotent daily backup function ensures the
-// duplicate winter/summer schedules still create one backup per Israel date.
+// Vercel Cron itself runs in UTC. It invokes this route hourly, and this
+// Israel-time guard creates exactly one idempotent backup at local midnight,
+// including across daylight-saving-time changes.
 app.get("/api/internal/daily-backup", async (req, res) => {
   if (!CRON_SECRET || req.header("Authorization") !== `Bearer ${CRON_SECRET}`) return res.status(401).json({ error: "Unauthorized" });
+  if (israelHour() !== 0) return res.json({ success: true, skipped: true, reason: "not-midnight-in-Israel" });
   try {
-    const backup = await createApplicationBackup();
+    const backup = await createCompleteApplicationBackup();
     res.json({ success: true, backup });
   } catch {
     res.status(503).json({ error: "יצירת הגיבוי נכשלה" });
@@ -708,7 +782,7 @@ app.get("/api/admin/developer/backups", developerAuth, async (_req, res) => {
 
 app.post("/api/admin/developer/backups/create", developerAuth, async (_req, res) => {
   try {
-    res.json({ success: true, backup: await createApplicationBackup() });
+    res.json({ success: true, backup: await createCompleteApplicationBackup() });
   } catch {
     res.status(503).json({ error: "יצירת הגיבוי נכשלה" });
   }
@@ -716,6 +790,7 @@ app.post("/api/admin/developer/backups/create", developerAuth, async (_req, res)
 
 app.post("/api/admin/developer/backups/:id/restore", developerAuth, async (req, res) => {
   try {
+    await restoreDonationBackup(req.params.id);
     await restoreApplicationBackup(req.params.id);
     addSeatAudit("שוחזרה גרסת גיבוי", { actor: "מפתח", details: req.params.id });
     res.json({ success: true });

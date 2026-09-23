@@ -11,3 +11,6 @@ synagogue.db
 synagogue.db-shm
 synagogue.db-wal
 backups/
+
+.vercel
+.env*

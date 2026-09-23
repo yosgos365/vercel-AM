@@ -6,6 +6,7 @@ import { Registration } from "./components/Registration";
 import { UserDashboard } from "./components/UserDashboard";
 import { DonationsSeatingView } from "./DonationsSeatingView";
 import type { DonationDashboardData, DonationUser, Pledge } from "./types";
+import { downloadReceiptPdf, type ReceiptPdfAction, type ReceiptPdfData } from "./receiptPdf";
 
 const ADMIN_TOKEN_KEY = "ahavat-menachem-donations-admin-token";
 const ADMIN_ROLE_KEY = "ahavat-menachem-donations-admin-role";
@@ -55,6 +56,46 @@ const fileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   reader.onload = () => resolve(String(reader.result));
   reader.readAsDataURL(file);
 });
+
+const MAX_RECEIPT_BYTES = Math.floor(4.8 * 1024 * 1024);
+
+const loadReceiptImage = (file: File) => new Promise<HTMLImageElement>((resolve, reject) => {
+  const image = new Image();
+  const url = URL.createObjectURL(file);
+  image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+  image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("לא ניתן לקרוא את תמונת האסמכתא")); };
+  image.src = url;
+});
+
+const canvasBlob = (canvas: HTMLCanvasElement, quality: number) => new Promise<Blob>((resolve, reject) => {
+  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("דחיסת תמונת האסמכתא נכשלה")), "image/jpeg", quality);
+});
+
+// Receipts are readable at 1,800 px, while a JPEG keeps uploads well below
+// the server limit in ordinary phone screenshots.
+const compressReceiptImage = async (file: File) => {
+  if (!file.type.startsWith("image/")) throw new Error("יש לצרף תמונה בלבד");
+  const image = await loadReceiptImage(file);
+  let scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
+  let candidate: Blob | null = null;
+  for (const quality of [0.88, 0.82, 0.76, 0.7]) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("דחיסת תמונת האסמכתא אינה זמינה בדפדפן זה");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    candidate = await canvasBlob(canvas, quality);
+    if (candidate.size <= MAX_RECEIPT_BYTES) break;
+    scale *= 0.78;
+  }
+  if (!candidate || candidate.size > MAX_RECEIPT_BYTES) throw new Error("לא ניתן לדחוס את התמונה לגודל שניתן להעלות. נסו צילום מסך קטן יותר.");
+  const filename = `${file.name.replace(/\.[^.]+$/, "") || "אסמכתא"}.jpg`;
+  const compressed = new File([candidate], filename, { type: "image/jpeg" });
+  return { file: compressed, wasCompressed: compressed.size < file.size || compressed.type !== file.type };
+};
 
 export function DonationApp() {
   const location = useLocation();
@@ -260,13 +301,13 @@ export function DonationApp() {
       return false;
     }
     try {
-      if (file.size > 5 * 1024 * 1024) throw new Error("גודל תמונת האסמכתא המרבי הוא 5MB");
+      const optimized = await compressReceiptImage(file);
       await userRequest("/api/donations/me/payment", {
         method: "POST",
-        body: JSON.stringify({ pledgeIds, paymentMethod: method, receiptImage: await fileAsDataUrl(file) }),
+        body: JSON.stringify({ pledgeIds, paymentMethod: method, receiptImage: await fileAsDataUrl(optimized.file) }),
       });
       await refreshUser();
-      showNotice("הדיווח והתמונה נשמרו ונשלחו לאישור הגבאי.");
+      showNotice(optimized.wasCompressed ? "התמונה נדחסה, נשמרה ונשלחה לאישור הגבאי." : "הדיווח והתמונה נשמרו ונשלחו לאישור הגבאי.");
       return true;
     } catch (cause) {
       showNotice(cause instanceof Error ? cause.message : "דיווח התשלום נכשל", "error");
@@ -292,14 +333,78 @@ export function DonationApp() {
     }
   };
 
-  const downloadReceiptPdf = (receiptNumber: string, sessionToken: string) => {
-    if (!receiptNumber || !sessionToken) return showNotice("אישור התשלום אינו זמין להורדה", "error");
-    const link = document.createElement("a");
-    link.href = `/api/donations/receipt-pdf/${encodeURIComponent(receiptNumber)}?token=${encodeURIComponent(sessionToken)}`;
-    link.download = `אישור תשלום-${receiptNumber}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  const createReceiptPdf = async (receipt: ReceiptPdfData, action: ReceiptPdfAction = "download") => {
+    try {
+      await downloadReceiptPdf(receipt, action);
+      showNotice(action === "print" ? "אישור התשלום נפתח להדפסה." : "אישור התשלום הורד כקובץ PDF.");
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : "הפקת אישור התשלום נכשלה", "error");
+    }
+  };
+
+  const developerRequest = async (url: string, options: RequestInit = {}) => {
+    const response = await fetch(url, {
+      ...options,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || "פעולת הגיבוי נכשלה");
+    return body;
+  };
+
+  const exportFullDonationData = async () => {
+    try {
+      const response = await fetch("/api/donations/admin/export.xls", { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "יצוא הנתונים נכשל");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `דוח-מלא-${new Date().toLocaleDateString("he-IL").replace(/\//g, "-")}.xls`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showNotice("קובץ האקסל המלא ירד בהצלחה.");
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : "יצוא הנתונים נכשל", "error");
+    }
+  };
+
+  const createManualBackup = async () => {
+    try {
+      await developerRequest("/api/donations/developer/backups/create", { method: "POST" });
+      showNotice("נוצר גיבוי מלא של המערכת.");
+      return true;
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : "יצירת הגיבוי נכשלה", "error");
+      return false;
+    }
+  };
+
+  const loadDeveloperBackups = async () => {
+    try {
+      const body = await developerRequest("/api/donations/developer/backups");
+      return Array.isArray(body.backups) ? body.backups : [];
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : "טעינת הגיבויים נכשלה", "error");
+      return [];
+    }
+  };
+
+  const restoreDeveloperBackup = async (backupId: string) => {
+    try {
+      await developerRequest(`/api/donations/developer/backups/${backupId}/restore`, { method: "POST" });
+      await Promise.all([refresh(), refreshSeating()]);
+      showNotice("הגיבוי שוחזר בהצלחה.");
+      return true;
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : "שחזור הגיבוי נכשל", "error");
+      return false;
+    }
   };
 
   if (registeringPhone) {
@@ -329,7 +434,7 @@ export function DonationApp() {
           onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
           onSubmitPayment={submitCurrentUserPayment}
           onUpdateUser={(user) => void updateCurrentUser(user)}
-          onDownloadReceipt={(receiptNumber) => downloadReceiptPdf(receiptNumber, userToken)}
+          onDownloadReceipt={createReceiptPdf}
         />
         {noticeBanner}
       </div>
@@ -348,7 +453,7 @@ export function DonationApp() {
 
   const admin: DonationUser = {
     id: "admin-session",
-    name: "גבאי ראשי",
+    name: "מנהל מערכת",
     phone: "",
     role: "admin",
     familyMembers: [],
@@ -374,7 +479,11 @@ export function DonationApp() {
         onApprovePledge={(pledgeId, approvalNote) => mutate(`/api/donations/admin/pledges/${pledgeId}/approve`, "POST", { approvalNote }, "התשלום אושר ונשמר בהצלחה.")}
         onSavePledgeNote={(pledgeId, approvalNote) => mutate(`/api/donations/admin/pledges/${pledgeId}/note`, "PUT", { approvalNote }, "הערת הגבאי נשמרה.")}
         onViewReceipt={viewReceiptImage}
-        onDownloadReceipt={(receiptNumber) => downloadReceiptPdf(receiptNumber, token)}
+        onDownloadReceipt={createReceiptPdf}
+        onExportFullData={exportFullDonationData}
+        onCreateBackup={createManualBackup}
+        onLoadBackups={loadDeveloperBackups}
+        onRestoreBackup={restoreDeveloperBackup}
         onAddPledge={(pledge: Partial<Pledge>, name, phone) => mutate("/api/donations/admin/pledges", "POST", {
           name,
           phone,

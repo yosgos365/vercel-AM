@@ -5,6 +5,7 @@ import { PaymentModal } from './PaymentModal';
 import { Settings, Plus, Trash2 } from 'lucide-react';
 import { HebrewDatePicker, HebrewDateValue } from './HebrewDatePicker';
 import { Link } from 'react-router-dom';
+import type { ReceiptPdfAction, ReceiptPdfData } from '../receiptPdf';
 
 interface UserDashboardProps {
   user: User;
@@ -12,7 +13,7 @@ interface UserDashboardProps {
   onLogout: () => void;
   onSubmitPayment: (pledgeIds: string[], method: 'paybox' | 'bank', file: File | null) => Promise<boolean>;
   onUpdateUser: (user: User) => void;
-  onDownloadReceipt: (receiptNumber: string) => void;
+  onDownloadReceipt: (receipt: ReceiptPdfData, action?: ReceiptPdfAction) => void | Promise<void>;
 }
 
 export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpdateUser, onDownloadReceipt }: UserDashboardProps) {
@@ -24,6 +25,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
   const [selectedPledges, setSelectedPledges] = useState<Set<string>>(new Set());
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
 
   const openPledges = pledges.filter(p => p.status === 'open');
   const pendingPledges = pledges.filter(p => p.status === 'pending');
@@ -130,8 +132,28 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
   };
 
   
-  const handleDownloadReceipt = () => {
-    if (receiptPledge?.receiptNumber) onDownloadReceipt(receiptPledge.receiptNumber);
+  const handleDownloadReceipt = async () => {
+    if (!receiptPledge?.receiptNumber || receiptPledges.length === 0) return;
+    setIsDownloadingReceipt(true);
+    try {
+      await onDownloadReceipt({
+        receiptNumber: receiptPledge.receiptNumber,
+        donorName: user.name,
+        pledges: receiptPledges,
+      });
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!receiptPledge?.receiptNumber || receiptPledges.length === 0) return;
+    setIsDownloadingReceipt(true);
+    try {
+      await onDownloadReceipt({ receiptNumber: receiptPledge.receiptNumber, donorName: user.name, pledges: receiptPledges }, 'print');
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
   };
 
   const handlePaymentSubmit = async (method: 'paybox' | 'bank', file: File | null) => {
@@ -550,14 +572,16 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
               <h3 className="font-bold text-slate-800">הדפסת אישור תשלום</h3>
               <div className="flex gap-2">
                 <button
-                  onClick={handleDownloadReceipt}
-                  className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                  onClick={() => void handleDownloadReceipt()}
+                  disabled={isDownloadingReceipt}
+                  className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1 disabled:cursor-wait disabled:opacity-70"
                 >
                   <Download className="w-4 h-4" />
-                  הורד PDF
+                  {isDownloadingReceipt ? 'מכין PDF…' : 'הורד PDF'}
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => void handlePrintReceipt()}
+                  disabled={isDownloadingReceipt}
                   className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1"
                 >
                   <Printer className="w-4 h-4" />
