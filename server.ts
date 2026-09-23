@@ -152,15 +152,6 @@ const createCompleteApplicationBackup = async () => {
   return { ...seatingBackup, donations: donationsBackup };
 };
 
-const israelHour = () => {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jerusalem",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  return Number(parts.find((part) => part.type === "hour")?.value || -1);
-};
-
 const excelText = (value: unknown) => String(value ?? "")
   .replace(/&/g, "&amp;")
   .replace(/</g, "&lt;")
@@ -744,12 +735,10 @@ app.get("/api/payment-images/*", servePaymentImage);
 app.get("/api/donations/receipt-images/:fileId", servePaymentImage);
 app.get("/api/donations/receipt-images/*", servePaymentImage);
 
-// Vercel Cron itself runs in UTC. It invokes this route hourly, and this
-// Israel-time guard creates exactly one idempotent backup at local midnight,
-// including across daylight-saving-time changes.
+// Vercel Hobby runs one scheduled task per day. The snapshot itself is
+// idempotent, so it safely creates one complete daily version.
 app.get("/api/internal/daily-backup", async (req, res) => {
   if (!CRON_SECRET || req.header("Authorization") !== `Bearer ${CRON_SECRET}`) return res.status(401).json({ error: "Unauthorized" });
-  if (israelHour() !== 0) return res.json({ success: true, skipped: true, reason: "not-midnight-in-Israel" });
   try {
     const backup = await createCompleteApplicationBackup();
     res.json({ success: true, backup });
