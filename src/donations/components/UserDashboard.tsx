@@ -168,12 +168,12 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
     <div className="min-h-screen bg-stone-50 text-stone-900 pb-24">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-stone-200 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="max-w-3xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2">
             <img src="/logo-no-text.jpeg" alt="אחוות מנחם" className="h-12 w-auto object-contain mix-blend-multiply" />
           </div>
-          <div className="mr-5 flex flex-1 items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+          <div className="mr-2 flex min-w-0 flex-1 items-center justify-between gap-2 sm:mr-5 sm:gap-4">
+            <div className="flex min-w-0 items-center gap-1 sm:gap-4">
               <div className="text-right hidden sm:block">
                 <h1 className="text-sm font-bold text-stone-800">שלום, {user.name}</h1>
                 <p className="text-xs text-stone-500">האזור האישי שלך</p>
@@ -198,7 +198,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
       <main className="max-w-3xl mx-auto px-4 py-6">
 
         {(!user.hebrewDob || !user.name) && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg mb-6 flex items-center justify-between">
+          <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-bold">חסרים פרטים באזור האישי</p>
               <p className="text-sm text-amber-700">אנא עדכן את תאריך הלידה שלך ופרטים נוספים בהגדרות החשבון.</p>
@@ -239,7 +239,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
             <div>
               <h3 className="text-lg font-bold text-slate-800 mb-4">פרטים אישיים</h3>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">שם מלא</label>
                     <input

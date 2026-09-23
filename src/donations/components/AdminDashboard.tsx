@@ -253,24 +253,24 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   return (
     <div className="min-h-screen bg-stone-100 pb-12">
       <header className={`bg-slate-900 text-white shadow-sm ${activeTab === 'seating' ? '' : 'sticky top-0 z-10'}`}>
-        <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <div className="bg-slate-800 p-1 rounded-lg">
               <img src="/logo-no-text.jpeg" alt="אחוות מנחם" className="w-10 h-auto object-contain mix-blend-multiply" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-wide">{isDeveloper ? 'ממשק מפתח' : 'ממשק ניהול גבאים'}</h1>
-              <p className="text-slate-300 text-sm">{isDeveloper ? 'שלום מפתח' : 'מנהל מערכת'}</p>
+              <h1 className="truncate text-base font-bold tracking-wide text-white sm:text-xl">{isDeveloper ? 'ממשק מפתח' : 'ממשק ניהול גבאים'}</h1>
+              <p className="hidden text-sm text-slate-300 sm:block">{isDeveloper ? 'שלום מפתח' : 'מנהל מערכת'}</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             {onChangeAdminPassword && (
               <button onClick={() => { setPasswordModalOpen(true); setPasswordError(''); }} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors" title="שינוי סיסמת מנהל">
                 <KeyRound className="w-5 h-5" />
                 <span className="hidden sm:inline text-sm font-medium">סיסמה</span>
               </button>
             )}
-            {isDeveloper && <><button onClick={() => void openBackups()} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-white hover:bg-slate-700">גיבויים</button><Wrench className="w-5 h-5 text-amber-300" aria-label="מצב מפתח" /></>}
+            {isDeveloper && <><button onClick={() => void openBackups()} className="rounded-lg bg-slate-800 px-2 py-1.5 text-xs font-bold text-white hover:bg-slate-700 sm:px-3 sm:text-sm">גיבויים</button><Wrench className="hidden h-5 w-5 text-amber-300 sm:block" aria-label="מצב מפתח" /></>}
             <button onClick={onLogout} className="text-slate-300 hover:text-white flex items-center gap-1 p-2 rounded-lg hover:bg-slate-800 transition-colors">
               <LogOut className="w-5 h-5" />
               <span className="hidden sm:inline text-sm font-medium">התנתק</span>
@@ -336,25 +336,25 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
         </div>
 
         {(activeTab === 'all' || activeTab === 'pending' || activeTab === 'users') && (
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex gap-3 items-center justify-between">
-            <div className="flex gap-3 items-center flex-1 max-w-lg">
+          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 w-full items-center gap-3 sm:max-w-lg">
               <Search className="w-5 h-5 text-slate-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="חיפוש לפי שם, טלפון או סוג..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="flex-1 bg-transparent border-none outline-none text-slate-700"
+                className="min-w-0 flex-1 bg-transparent border-none outline-none text-slate-700"
               />
             </div>
             
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 min-[440px]:grid-cols-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
               {activeTab === 'users' ? (
-                <button onClick={handleExportUsersCSV} className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא רשימה מסוננת</button>
+                <button onClick={handleExportUsersCSV} className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100 sm:w-auto sm:px-4"><Download className="w-4 h-4" />ייצוא רשימה מסוננת</button>
               ) : (
-                <button onClick={handleExportCSV} className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא מסונן</button>
+                <button onClick={handleExportCSV} className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100 sm:w-auto sm:px-4"><Download className="w-4 h-4" />ייצוא מסונן</button>
               )}
-              <button onClick={() => void onExportFullData()} className="px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-lg transition-colors flex items-center gap-2 text-sm whitespace-nowrap"><Download className="w-4 h-4" />ייצוא מלא לאקסל</button>
+              <button onClick={() => void onExportFullData()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700 sm:w-auto sm:px-4"><Download className="w-4 h-4" />ייצוא מלא לאקסל</button>
             </div>
           </div>
         )}
@@ -466,7 +466,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   לא נמצאו מתפללים.
                 </div>
               ) : (
-                <table className="w-full text-right">
+                <table className="w-full min-w-[540px] text-right">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-sm font-medium">
                     <tr>
                       <th className="p-4">שם מתפלל</th>
@@ -500,7 +500,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   לא נמצאו תוצאות.
                 </div>
               ) : (
-                <table className="w-full text-right">
+                <table className="w-full min-w-[840px] text-right">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-sm font-medium">
                     <tr>
                       <th className="p-4">מתפלל</th>
