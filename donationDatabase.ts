@@ -230,25 +230,29 @@ export async function updateDonationUser(userId: string, changes: Partial<Pick<D
     const current = donationUserFromData(snapshot.id, snapshot.data()!);
     const name = changes.name === undefined ? current.name : asString(changes.name);
     const phone = changes.phone === undefined ? current.phone : asString(changes.phone);
-    if (!name || !phone) throw new Error("יש למלא שם ומספר טלפון");
-    if (!isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
+    if (!name) throw new Error("יש למלא שם מתפלל");
+    if (phone && !isDonationPhone(phone)) throw new Error("יש להזין מספר טלפון נייד תקין");
     const oldPhone = normalizedPhone(current.phone);
     const newPhone = normalizedPhone(phone);
-    const newIndexReference = db.collection(PHONE_INDEX).doc(phoneIndexId(phone));
+    const newIndexReference = phone ? db.collection(PHONE_INDEX).doc(phoneIndexId(phone)) : null;
     if (newPhone !== oldPhone) {
-      const [indexSnapshot, matchingUsers] = await Promise.all([
-        transaction.get(newIndexReference),
-        transaction.get(db.collection(USERS).where("phoneNormalized", "==", newPhone).limit(1)),
-      ]);
-      const indexedUser = asString(indexSnapshot.data()?.userId);
-      if ((indexSnapshot.exists && indexedUser !== userId) || matchingUsers.docs.some(document => document.id !== userId)) {
-        throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
+      if (newPhone && newIndexReference) {
+        const [indexSnapshot, matchingUsers] = await Promise.all([
+          transaction.get(newIndexReference),
+          transaction.get(db.collection(USERS).where("phoneNormalized", "==", newPhone).limit(1)),
+        ]);
+        const indexedUser = asString(indexSnapshot.data()?.userId);
+        if ((indexSnapshot.exists && indexedUser !== userId) || matchingUsers.docs.some(document => document.id !== userId)) {
+          throw new Error("כבר קיים מתפלל עם מספר הטלפון הזה");
+        }
       }
-      const oldIndexReference = db.collection(PHONE_INDEX).doc(phoneIndexId(current.phone));
-      const oldIndex = await transaction.get(oldIndexReference);
-      if (oldIndex.exists && asString(oldIndex.data()?.userId) === userId) transaction.delete(oldIndexReference);
-      transaction.set(newIndexReference, { userId, phoneNormalized: newPhone, updatedAt: Date.now() });
-    } else {
+      if (oldPhone) {
+        const oldIndexReference = db.collection(PHONE_INDEX).doc(phoneIndexId(current.phone));
+        const oldIndex = await transaction.get(oldIndexReference);
+        if (oldIndex.exists && asString(oldIndex.data()?.userId) === userId) transaction.delete(oldIndexReference);
+      }
+      if (newPhone && newIndexReference) transaction.set(newIndexReference, { userId, phoneNormalized: newPhone, updatedAt: Date.now() });
+    } else if (newPhone && newIndexReference) {
       // Backfill the index for records created before this protection existed.
       transaction.set(newIndexReference, { userId, phoneNormalized: newPhone, updatedAt: Date.now() }, { merge: true });
     }

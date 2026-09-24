@@ -9,8 +9,9 @@ export interface HebrewDateValue {
 
 interface HebrewDatePickerProps {
   value: HebrewDateValue | null;
-  onChange: (value: HebrewDateValue) => void;
+  onChange: (value: HebrewDateValue | null) => void;
   label?: string;
+  clearLabel?: string;
 }
 
 const hebrewMonthsMap: Record<number, string> = {
@@ -58,7 +59,7 @@ const getMonthsForYear = (year: number) => {
   return months;
 };
 
-export function HebrewDatePicker({ value, onChange, label = 'תאריך עברי' }: HebrewDatePickerProps) {
+export function HebrewDatePicker({ value, onChange, label = 'תאריך עברי', clearLabel = 'נקה תאריך' }: HebrewDatePickerProps) {
   // Default to today if not provided, or a specific default year
   const currentYear = new HDate().getFullYear();
   const selectedYear = value?.year || currentYear;
@@ -114,7 +115,10 @@ export function HebrewDatePicker({ value, onChange, label = 'תאריך עברי
 
   return (
     <div className="space-y-1">
-      {label && <label className="block text-sm font-medium text-slate-700">{label}</label>}
+      <div className="flex min-h-5 items-center justify-between gap-3">
+        {label && <label className="block text-sm font-medium text-slate-700">{label}</label>}
+        {value && <button type="button" onClick={() => onChange(null)} className="text-xs font-medium text-rose-600 hover:text-rose-800 hover:underline">{clearLabel}</button>}
+      </div>
       <div className="flex gap-2" dir="rtl">
         <select
           value={value?.day || ''}

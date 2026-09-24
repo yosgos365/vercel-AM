@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { User, Pledge } from '../types';
+import { FamilyMember, HebrewDateValue, User, Pledge, Yahrzeit } from '../types';
 import { Home } from '../../pages/Home';
+import { HebrewDatePicker } from './HebrewDatePicker';
 import { LogOut, Users, FileCheck, PlusCircle, CheckCircle2, Search, Image as ImageIcon, Contact, Printer, Download, Trash2, KeyRound, Wrench, Map as MapIcon, MessageSquarePlus } from 'lucide-react';
 import type { ReceiptPdfAction, ReceiptPdfData } from '../receiptPdf';
 
@@ -18,7 +19,7 @@ interface AdminDashboardProps {
   onLoadBackups?: () => Promise<Array<{ id: string; timestamp: number; requestsCount: number }>>;
   onRestoreBackup?: (backupId: string) => Promise<boolean>;
   onAddPledge: (pledgeData: Partial<Pledge>, userName: string, phone: string) => Promise<boolean>;
-  onUpdateUser: (id: string, name: string, phone: string) => Promise<boolean>;
+  onUpdateUser: (id: string, changes: Partial<Pick<User, 'name' | 'phone' | 'hebrewDob' | 'familyMembers' | 'yahrzeits'>>) => Promise<boolean>;
   onAddUser: (name: string, phone: string) => Promise<boolean>;
   onDeleteUser: (id: string) => Promise<boolean>;
   isDeveloper?: boolean;
@@ -28,12 +29,25 @@ interface AdminDashboardProps {
   onUpdateSeat?: (seatId: string, owner: string) => Promise<void> | void;
 }
 
+type UserModalState = {
+  isOpen: boolean;
+  mode: 'add' | 'edit';
+  id?: string;
+  name: string;
+  phone: string;
+  hebrewDob: HebrewDateValue | null;
+  familyMembers: FamilyMember[];
+  yahrzeits: Yahrzeit[];
+};
+
+const emptyUserModal = (): UserModalState => ({ isOpen: false, mode: 'add', name: '', phone: '', hebrewDob: null, familyMembers: [], yahrzeits: [] });
+
 export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge, onSavePledgeNote, onViewReceipt, onDownloadReceipt, onExportFullData, onCreateBackup, onLoadBackups, onRestoreBackup, onAddPledge, onUpdateUser, onAddUser, onDeleteUser, isDeveloper = false, onChangeAdminPassword, onDeletePledge, seating = {}, onUpdateSeat }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'pending' | 'add' | 'all' | 'users' | 'seating'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [receiptPledge, setReceiptPledge] = useState<Pledge | null>(null);
   const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
-  const [userModal, setUserModal] = useState<{ isOpen: boolean; mode: 'add' | 'edit'; id?: string; name: string; phone: string }>({ isOpen: false, mode: 'add', name: '', phone: '' });
+  const [userModal, setUserModal] = useState<UserModalState>(emptyUserModal);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ isOpen: boolean; id: string; name: string }>({ isOpen: false, id: '', name: '' });
   const [pledgeDeleteModal, setPledgeDeleteModal] = useState<{ isOpen: boolean; id: string; name: string; type: string }>({ isOpen: false, id: '', name: '', type: '' });
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -147,24 +161,39 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
   const isExistingUser = !!matchingUser;
   
   const openAddUserModal = () => {
-    setUserModal({ isOpen: true, mode: 'add', name: '', phone: '' });
+    setUserModal({ ...emptyUserModal(), isOpen: true });
   };
   
-  const openEditUserModal = (id: string, name: string, phone: string) => {
-    setUserModal({ isOpen: true, mode: 'edit', id, name, phone });
+  const openEditUserModal = (editedUser: User) => {
+    setUserModal({
+      isOpen: true,
+      mode: 'edit',
+      id: editedUser.id,
+      name: editedUser.name,
+      phone: editedUser.phone,
+      hebrewDob: editedUser.hebrewDob || null,
+      familyMembers: editedUser.familyMembers || [],
+      yahrzeits: editedUser.yahrzeits || [],
+    });
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userModal.name || !userModal.phone) return;
+    if (!userModal.name) return;
     
     if (userModal.mode === 'add') {
-      if (!await onAddUser(userModal.name, userModal.phone)) return;
+      if (!userModal.phone || !await onAddUser(userModal.name, userModal.phone)) return;
     } else if (userModal.mode === 'edit' && userModal.id) {
-      if (!await onUpdateUser(userModal.id, userModal.name, userModal.phone)) return;
+      if (!await onUpdateUser(userModal.id, {
+        name: userModal.name,
+        phone: userModal.phone,
+        hebrewDob: userModal.hebrewDob || undefined,
+        familyMembers: userModal.familyMembers,
+        yahrzeits: userModal.yahrzeits,
+      })) return;
     }
     
-    setUserModal({ isOpen: false, mode: 'add', name: '', phone: '' });
+    setUserModal(emptyUserModal());
   };
   
   const handleExportCSV = () => {
@@ -481,7 +510,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                         <td className="p-4 font-mono text-slate-600" dir="ltr">{u.phone}</td>
                         <td className="p-4">
                           <button
-                            onClick={() => openEditUserModal(u.id, u.name, u.phone)}
+                            onClick={() => openEditUserModal(u)}
                             className="text-indigo-600 hover:text-indigo-800 text-sm font-medium transition-colors"
                           >
                             ערוך פרטים
@@ -728,7 +757,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 {userModal.mode === 'add' ? 'הוספת מתפלל חדש' : 'עריכת מתפלל'}
               </h3>
               <button
-                onClick={() => setUserModal({ isOpen: false, mode: 'add', name: '', phone: '' })}
+                onClick={() => setUserModal(emptyUserModal())}
                 className="text-slate-400 hover:text-slate-600 transition-colors font-bold"
               >
                 &times;
@@ -751,7 +780,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 <label className="block text-sm font-medium text-slate-700 mb-1">מספר טלפון (כניסה למערכת)</label>
                 <input
                   type="tel"
-                  required
+                  required={userModal.mode === 'add'}
                   value={userModal.phone}
                   onChange={(e) => setUserModal({ ...userModal, phone: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono text-right"
@@ -759,6 +788,38 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                   placeholder="05X-XXXXXXX"
                 />
               </div>
+
+              {userModal.mode === 'edit' && (
+                <div className="space-y-5 border-t border-slate-200 pt-5">
+                  <HebrewDatePicker
+                    label="תאריך לידה עברי"
+                    value={userModal.hebrewDob}
+                    onChange={(hebrewDob) => setUserModal({ ...userModal, hebrewDob })}
+                  />
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3"><h4 className="font-bold text-slate-800">בני משפחה</h4><button type="button" onClick={() => setUserModal({ ...userModal, familyMembers: [...userModal.familyMembers, { id: crypto.randomUUID(), name: '', hebrewDob: undefined }] })} className="text-sm font-bold text-indigo-600 hover:underline">הוסף</button></div>
+                    {userModal.familyMembers.length === 0 ? <p className="text-sm text-slate-500">לא הוגדרו בני משפחה.</p> : userModal.familyMembers.map((member, index) => (
+                      <div key={member.id} className="rounded-lg border border-slate-200 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm font-medium text-slate-600">בן/בת משפחה</span><button type="button" onClick={() => setUserModal({ ...userModal, familyMembers: userModal.familyMembers.filter((_, currentIndex) => currentIndex !== index) })} className="text-xs font-bold text-rose-600 hover:underline">מחק</button></div>
+                        <input value={member.name} onChange={(event) => setUserModal({ ...userModal, familyMembers: userModal.familyMembers.map((current, currentIndex) => currentIndex === index ? { ...current, name: event.target.value } : current) })} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2" placeholder="שם בן/בת המשפחה" />
+                        <HebrewDatePicker label="תאריך לידה עברי" value={member.hebrewDob || null} onChange={(hebrewDob) => setUserModal({ ...userModal, familyMembers: userModal.familyMembers.map((current, currentIndex) => currentIndex === index ? { ...current, hebrewDob: hebrewDob || undefined } : current) })} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3"><h4 className="font-bold text-slate-800">יארצייט</h4><button type="button" onClick={() => setUserModal({ ...userModal, yahrzeits: [...userModal.yahrzeits, { id: crypto.randomUUID(), name: '', hebrewDate: undefined }] })} className="text-sm font-bold text-indigo-600 hover:underline">הוסף</button></div>
+                    {userModal.yahrzeits.length === 0 ? <p className="text-sm text-slate-500">לא הוגדרו יארצייטים.</p> : userModal.yahrzeits.map((yahrzeit, index) => (
+                      <div key={yahrzeit.id} className="rounded-lg border border-slate-200 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm font-medium text-slate-600">יארצייט</span><button type="button" onClick={() => setUserModal({ ...userModal, yahrzeits: userModal.yahrzeits.filter((_, currentIndex) => currentIndex !== index) })} className="text-xs font-bold text-rose-600 hover:underline">מחק</button></div>
+                        <input value={yahrzeit.name} onChange={(event) => setUserModal({ ...userModal, yahrzeits: userModal.yahrzeits.map((current, currentIndex) => currentIndex === index ? { ...current, name: event.target.value } : current) })} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2" placeholder="שם הנפטר/ת" />
+                        <HebrewDatePicker label="תאריך פטירה עברי" value={yahrzeit.hebrewDate || null} onChange={(hebrewDate) => setUserModal({ ...userModal, yahrzeits: userModal.yahrzeits.map((current, currentIndex) => currentIndex === index ? { ...current, hebrewDate: hebrewDate || undefined } : current) })} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="pt-4 flex items-center justify-between mt-2">
                 <div>
@@ -766,7 +827,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                     <button
                       type="button"
                       onClick={() => {
-                        setUserModal({ isOpen: false, mode: 'add', name: '', phone: '' });
+                        setUserModal(emptyUserModal());
                         setDeleteConfirmModal({ isOpen: true, id: userModal.id || '', name: userModal.name });
                       }}
                       className="px-4 py-2 text-red-600 hover:bg-red-50 font-medium rounded-lg transition-colors flex items-center gap-2"
@@ -779,7 +840,7 @@ export function AdminDashboard({ user, users, pledges, onLogout, onApprovePledge
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setUserModal({ isOpen: false, mode: 'add', name: '', phone: '' })}
+                    onClick={() => setUserModal(emptyUserModal())}
                     className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition-colors"
                   >
                     ביטול

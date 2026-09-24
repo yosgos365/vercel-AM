@@ -14,9 +14,10 @@ interface UserDashboardProps {
   onSubmitPayment: (pledgeIds: string[], method: 'paybox' | 'bank', file: File | null) => Promise<boolean>;
   onUpdateUser: (user: User) => void;
   onDownloadReceipt: (receipt: ReceiptPdfData, action?: ReceiptPdfAction) => void | Promise<void>;
+  isLoadingData?: boolean;
 }
 
-export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpdateUser, onDownloadReceipt }: UserDashboardProps) {
+export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpdateUser, onDownloadReceipt, isLoadingData = false }: UserDashboardProps) {
   const [activeTab, setActiveTab] = useState<'open' | 'history' | 'settings'>('open');
   const [isAddingFamilyMember, setIsAddingFamilyMember] = useState(false);
   const [newFamilyMember, setNewFamilyMember] = useState<{name: string, hebrewDob: any}>({ name: '', hebrewDob: null });
@@ -234,7 +235,13 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
 
         {/* Tab Content */}
 
-        {activeTab === 'settings' && (
+        {isLoadingData ? (
+          <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <span className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" aria-hidden="true" />
+            <h2 className="text-xl font-bold text-slate-800">טוען נתונים</h2>
+            <p className="mt-2 text-sm text-slate-500">מעדכנים את ההתחייבויות שלך…</p>
+          </div>
+        ) : activeTab === 'settings' && (
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-8">
             <div>
               <h3 className="text-lg font-bold text-slate-800 mb-4">פרטים אישיים</h3>
@@ -437,7 +444,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
           </div>
         )}
 
-        {activeTab === 'open' ? (
+        {!isLoadingData && activeTab === 'open' ? (
           <div className="space-y-4">
             {openPledges.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -492,7 +499,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
               </>
             )}
           </div>
-        ) : activeTab === 'history' ? (
+        ) : !isLoadingData && activeTab === 'history' ? (
           <div className="space-y-4">
             {historyPledges.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -536,7 +543,7 @@ export function UserDashboard({ user, pledges, onLogout, onSubmitPayment, onUpda
       </main>
 
       {/* Floating Action Bar */}
-      {activeTab === 'open' && openPledges.length > 0 && (
+      {!isLoadingData && activeTab === 'open' && openPledges.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
           <div className="max-w-3xl mx-auto flex items-center justify-between">
             <div>

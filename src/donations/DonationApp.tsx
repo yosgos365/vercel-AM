@@ -106,6 +106,7 @@ export function DonationApp() {
   const [seating, setSeating] = useState<SeatingState>({});
   const [userToken, setUserToken] = useState(savedUserToken);
   const [userData, setUserData] = useState<{ user: DonationUser; pledges: Pledge[] } | null>(null);
+  const [userDataLoading, setUserDataLoading] = useState(Boolean(savedUserToken));
   const [registeringPhone, setRegisteringPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -179,6 +180,7 @@ export function DonationApp() {
 
   const refreshUser = useCallback(async () => {
     if (!userToken) return;
+    setUserDataLoading(true);
     setLoading(true);
     try {
       setUserData(await userRequest("/api/donations/me"));
@@ -192,6 +194,7 @@ export function DonationApp() {
         saveUserToken("");
       }
     } finally {
+      setUserDataLoading(false);
       setLoading(false);
     }
   }, [userRequest, userToken]);
@@ -255,6 +258,7 @@ export function DonationApp() {
       }
       saveUserToken(body.token);
       setUserToken(body.token);
+      setUserDataLoading(true);
       setUserData({ user: body.user, pledges: [] });
       setError("");
     } catch (cause) {
@@ -276,6 +280,7 @@ export function DonationApp() {
       if (!response.ok) throw new Error(body.error || "ההרשמה נכשלה");
       saveUserToken(body.token);
       setUserToken(body.token);
+      setUserDataLoading(true);
       setUserData({ user: body.user, pledges: [] });
       setRegisteringPhone(null);
       setError("");
@@ -431,10 +436,11 @@ export function DonationApp() {
         <UserDashboard
           user={userData.user}
           pledges={userData.pledges}
-          onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); }}
+          onLogout={() => { saveUserToken(""); setUserToken(""); setUserData(null); setUserDataLoading(false); }}
           onSubmitPayment={submitCurrentUserPayment}
           onUpdateUser={(user) => void updateCurrentUser(user)}
           onDownloadReceipt={createReceiptPdf}
+          isLoadingData={userDataLoading}
         />
         {noticeBanner}
       </div>
@@ -492,7 +498,7 @@ export function DonationApp() {
           date: pledge.date,
           approvalNote: pledge.approvalNote,
         }, "ההתחייבות נוספה בהצלחה.")}
-        onUpdateUser={(userId, name, phone) => mutate(`/api/donations/admin/users/${userId}`, "PUT", { name, phone }, "פרטי המתפלל נשמרו.")}
+        onUpdateUser={(userId, changes) => mutate(`/api/donations/admin/users/${userId}`, "PUT", changes, "פרטי המתפלל נשמרו.")}
         onAddUser={(name, phone) => mutate("/api/donations/admin/users", "POST", { name, phone }, "המתפלל נוסף בהצלחה.")}
         onDeleteUser={(userId) => mutate(`/api/donations/admin/users/${userId}`, "DELETE", undefined, "המתפלל נמחק.")}
         isDeveloper={adminRole === "developer"}

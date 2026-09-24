@@ -7,13 +7,13 @@ export interface HebrewDateValue {
 export interface FamilyMember {
   id: string;
   name: string;
-  hebrewDob: HebrewDateValue;
+  hebrewDob?: HebrewDateValue;
 }
 
 export interface Yahrzeit {
   id: string;
   name: string;
-  hebrewDate: HebrewDateValue;
+  hebrewDate?: HebrewDateValue;
 }
 
 export interface DonationUser {
